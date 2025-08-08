@@ -1,0 +1,7 @@
+name: 'Calendly Availability'
+type: module
+description: 'Fetch and display Calendly availability across staff or event types.'
+core_version_requirement: ^10
+package: Custom
+dependencies:
+  - drupal:block

@@ -1,0 +1,13 @@
+.table thead tr {
+    background-color: grey;
+  }
+  
+  .table thead th {
+    color: white;
+  }
+  
+  .btn-primary {
+    background-color: #861216;
+    border-color: #861216;
+  }
+  

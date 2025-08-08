@@ -1,0 +1,61 @@
+{#
+/**
+ * @file
+ * Default theme implementation to display a list of Calendly available slots.
+ *
+ * Available variables for the 'list' display_mode:
+ * - available_slots: An array of available slots, each with:
+ * - event_name: The name of the Calendly event type.
+ * - event_owner_name_display: The display name of the event owner (e.g., "J.R." or "MakeHaven Staff").
+ * - date_formatted: The start date of the slot, formatted (e.g., "Monday, June 2, 2025").
+ * - time_formatted_verbose: The start time of the slot, formatted and timezone-aware (e.g., "12:00 PM EDT").
+ * - time_formatted_for_button: The start time formatted for button text (e.g., "12:00pm").
+ * - booking_url: The URL to schedule the event.
+ * - invitees_remaining: Number of remaining spots for this slot.
+ * - button_action_text_config: The configurable action text for the button (e.g., "Schedule").
+ * - fallback_url: The URL for the fallback link, if configured.
+ * - fallback_link_text_config: The text for the fallback link, if configured.
+ *
+ * @see \Drupal\calendly_availability\Plugin\Block\CalendlyAvailabilityBlock::build()
+ */
+#}
+{% if available_slots is not empty %}
+  <div class="calendly-availability-list">
+    <h2>{{ 'Available Times'|t }}</h2>
+    <ul>
+      {% for slot in available_slots %}
+        <li>
+          <div class="slot-event-name"><strong>{{ slot.event_name }}</strong></div>
+          <div class="slot-time">
+            {{ 'Date'|t }}: {{ slot.date_formatted }}<br>
+            {{ 'Time'|t }}: {{ slot.time_formatted_verbose }} {# Use the verbose time format here #}
+          </div>
+          <div class="slot-details-inline"> {# New wrapper for owner and spots #}
+            {% if slot.event_owner_name_display %}
+              {{ 'With'|t }} {{ slot.event_owner_name_display }}
+            {% endif %}
+            {% if slot.invitees_remaining %}
+              <span class="slot-remaining">({{ 'Spots: @count'|t({'@count': slot.invitees_remaining}) }})</span>
+            {% endif %}
+          </div>
+          <div class="slot-book">
+            <a href="{{ slot.booking_url }}" 
+               class="btn btn-primary calendly-schedule-button"
+               onclick="Calendly.initPopupWidget({url: '{{ slot.booking_url | e('html_attr') }}'}); return false;">
+              {{ button_action_text_config|default('Schedule'|t) }} {{ slot.time_formatted_for_button }} {# Dynamic button text #}
+            </a>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% elseif fallback_url is empty %} {# Only show "no slots" if there's no fallback link to be displayed below #}
+  <p>{{ 'No currently available slots match your criteria.'|t }}</p>
+{% endif %}
+
+{# Always display this link at the bottom if a fallback URL is configured #}
+{% if fallback_url is not empty and fallback_link_text_config is not empty %}
+  <div class="calendly-fallback-link-bottom" style="margin-top: 20px; text-align: center;">
+    <p><a href="{{ fallback_url }}" class="btn btn-link">{{ fallback_link_text_config }}</a></p> {# Changed to btn-link for less emphasis than primary action #}
+  </div>
+{% endif %}

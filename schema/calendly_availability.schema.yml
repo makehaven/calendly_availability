@@ -1,0 +1,89 @@
+# Defines the schema for the module's main settings.
+calendly_availability.settings:
+  type: mapping
+  label: 'Calendly Availability Settings'
+  mapping:
+    # Environment-specific settings
+    production_base_url:
+      type: string
+      label: 'Production Base URL'
+    production_client_id:
+      type: string
+      label: 'Production Client ID'
+    production_client_secret:
+      type: string
+      label: 'Production Client Secret'
+    testing_base_url:
+      type: string
+      label: 'Testing Base URL'
+    testing_client_id:
+      type: string
+      label: 'Testing Client ID'
+    testing_client_secret:
+      type: string
+      label: 'Testing Client Secret'
+    development_base_url:
+      type: string
+      label: 'Development Base URL'
+    development_client_id:
+      type: string
+      label: 'Development Client ID'
+    development_client_secret:
+      type: string
+      label: 'Development Client Secret'
+    # Global settings from your version
+    webhook_signing_key:
+      type: text
+      label: 'Webhook Signing Key'
+    # Stored tokens (still global)
+    personal_access_token:
+      type: text
+      label: 'Personal Access Token'
+    refresh_token:
+      type: text
+      label: 'Refresh Token'
+    token_expires_at:
+      type: integer
+      label: 'Token Expiration Timestamp'
+
+# This part defines the settings for each individual block instance.
+# It is preserved exactly from your original file.
+block.settings.calendly_availability_block:
+  type: block_settings
+  label: 'Calendly Availability Block settings'
+  mapping:
+    event_type_keywords:
+      type: string
+      label: 'Event Type Keywords (Fallback)'
+    button_action_text:
+      type: string
+      label: 'Button Action Text'
+    days_to_show:
+      type: integer
+      label: 'Days to Show Availability For'
+    selected_event_type_uris:
+      type: sequence
+      label: 'Selected Event Types (Overrides Keywords if set)'
+      sequence:
+        type: string
+    display_mode:
+      type: string
+      label: 'Display Mode'
+    fallback_url:
+      type: string
+      label: 'Fallback Scheduling URL'
+    fallback_link_text:
+      type: string
+      label: 'Fallback Link Text'
+    owner_name_display_slot:
+      type: string
+      label: 'Staff Name Display in Slot Details'
+    hide_empty_time_columns:
+      type: boolean
+      label: 'Hide empty time columns'
+    hide_empty_day_rows:
+      type: boolean
+      label: 'Hide empty day rows'
+    no_results_message:
+      type: text
+      label: 'Custom "No Results" Message'

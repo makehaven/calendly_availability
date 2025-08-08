@@ -1,0 +1,6 @@
+{
+    "name": "makehaven/calendly_availability",
+    "type": "drupal-custom-module",
+    "description": "Fetch and display Calendly availability across staff or event types.",
+    "license": "GPL-2.0-or-later"
+}

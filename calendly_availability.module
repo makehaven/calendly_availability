@@ -1,0 +1,55 @@
+<?php
+
+/**
+ * @file
+ * Contains calendly_availability.module.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_help().
+ */
+function calendly_availability_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    // Main module help for the calendly_availability module.
+    case 'help.page.calendly_availability':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('Provides a block to display aggregated Calendly availability.') . '</p>';
+      return $output;
+
+    default:
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function calendly_availability_theme($existing, $type, $theme, $path) {
+  return [
+    'calendly_availability_block' => [
+      'variables' => [
+        'available_slots' => [],
+        'button_action_text_config' => 'Schedule', // UPDATED
+        'fallback_url' => NULL,                  // NEW or ensure it's there
+        'fallback_link_text_config' => NULL,     // NEW or ensure it's there
+      ],
+    ],
+    'calendly_availability_week_schedule' => [
+      'variables' => [
+        'schedule_data' => [], 
+        'button_action_text_config' => 'Schedule', // UPDATED
+        'fallback_url' => NULL,                  // NEW or ensure it's there
+        'fallback_link_text_config' => NULL,     // NEW or ensure it's there
+      ],
+    ],
+    'calendly_availability_fallback' => [
+      'variables' => [
+        'fallback_url' => '',
+        'message_for_fallback' => '', // Name used in build()
+        'fallback_link_text_config' => '', // Name used in build()
+      ],
+    ],
+  ];
+}

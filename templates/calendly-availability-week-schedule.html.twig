@@ -1,0 +1,69 @@
+{# templates/calendly-availability-week-schedule.html.twig #}
+{% if schedule_data.days_data is not empty %}
+  <div class="calendly-availability-week-schedule responsive-table">
+    <table class="table table-bordered calendly-week-table">
+      <thead>
+        <tr>
+          <th>{{ 'Day'|t }}</th>
+          {# Use the pre-formatted label from PHP for column headers #}
+          {% for block_key, block_info in schedule_data.time_block_headers %}
+            <th>{{ block_info.label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for day_key in schedule_data.day_keys_ordered %}
+          {% set day_info = schedule_data.display_days_info[day_key] %}
+          {% set day_slots_data = schedule_data.days_data[day_key] %}
+          <tr>
+            <td>
+              <strong>{{ day_info.name }}</strong><br>
+              <small>{{ day_info.date_full }}</small>
+            </td>
+            {% for block_key, block_header_info in schedule_data.time_block_headers %}
+              <td>
+                {% set slots_in_block = day_slots_data[block_key].slots %}
+                {% if slots_in_block is not empty %}
+                  <ul class="list-unstyled calendly-slot-list-item"> {# Added a class for easier styling of the li items #}
+                    {% for slot in slots_in_block %}
+                      <li>
+                        {# Optional: Display event name if desired, image shows it #}
+                        <div class="calendly-slot-event-name"><small>{{ slot.event_name }}</small></div>
+                        
+                        <a href="{{ slot.booking_url }}"
+                           class="btn btn-primary btn-sm calendly-schedule-button"
+                           onclick="Calendly.initPopupWidget({url: '{{ slot.booking_url | e('html_attr') }}'}); return false;">
+                           {{ 'Schedule'|t }} {{ slot.time_formatted_for_button }} {# Dynamic button text #}
+                        </a>
+                        <div class="calendly-slot-details">
+                          {% if slot.event_owner_name_display %}
+                            {{ 'With'|t }} {{ slot.event_owner_name_display }}
+                          {% endif %}
+                          {% if slot.invitees_remaining %}
+                            ({{ 'Spots: @count'|t({'@count': slot.invitees_remaining}) }})
+                          {% endif %}
+                        </div>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  &nbsp; {# Keep cell structure for empty slots #}
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% elseif fallback_url is empty %} 
+  {# Only show this if no slots AND no general fallback link will be shown below #}
+  <p>{{ 'No weekly schedule data to display.'|t }}</p>
+{% endif %}
+
+{# Always show "None of these times work for me" link if fallback_url is configured #}
+{% if fallback_url is not empty and fallback_link_text_config is not empty %}
+  <div class="calendly-fallback-link-bottom">
+    <p><a href="{{ fallback_url }}">{{ fallback_link_text_config }}</a></p>
+  </div>
+{% endif %}

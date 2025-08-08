@@ -1,0 +1,23 @@
+calendly_availability.settings:
+  path: '/admin/config/services/calendly_availability'
+  defaults:
+    _form: '\Drupal\calendly_availability\Form\CalendlySettingsForm'
+    _title: 'Calendly API Settings'
+  requirements:
+    _permission: 'administer site configuration'
+
+calendly_availability.oauth_callback:
+  path: '/calendly-auth/callback'
+  defaults:
+    _controller: '\Drupal\calendly_availability\Controller\CalendlyAuthController::callback'
+    _title: 'Calendly OAuth Callback'
+  requirements:
+    _access: 'TRUE'
+
+calendly_availability.diagnostics:
+  path: '/admin/config/services/calendly_availability/diagnostics'
+  defaults:
+    _controller: '\Drupal\calendly_availability\Controller\CalendlyAuthController::diagnostics'
+    _title: 'Calendly Diagnostics'
+  requirements:
+    _permission: 'administer site configuration'

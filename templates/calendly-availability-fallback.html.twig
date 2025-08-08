@@ -1,0 +1,5 @@
+{# templates/calendly-availability-fallback.html.twig #}
+<div class="calendly-availability-fallback">
+  <p>{{ message|default('No specific time slots are currently available. Please use the link below for more options or to contact us.'|t) }}</p>
+  <p><a href="{{ fallback_url }}" class="btn btn-primary">{{ 'Schedule an Alternative Time'|t }}</a></p>
+</div>

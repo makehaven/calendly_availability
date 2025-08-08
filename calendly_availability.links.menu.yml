@@ -1,0 +1,7 @@
+calendly_availability.settings:
+  title: 'Calendly API Settings'
+  description: 'Configure the Calendly API integration.'
+  parent: system.admin_config_services
+  route_name: calendly_availability.settings
+  menu_name: admin
+  weight: 100

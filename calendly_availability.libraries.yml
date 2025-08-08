@@ -1,0 +1,17 @@
+calendly_availability:
+  css:
+    theme:
+      css/calendly_availability.css: {}
+  js:
+    js/calendly_availability.js: {} # Your custom JS if needed
+  dependencies:
+    - core/jquery
+    - core/drupal
+    - core/drupalSettings
+
+calendly_widget:
+  js:
+    https://assets.calendly.com/assets/external/widget.js: { type: external, attributes: { async: true, defer: true } }
+  css:
+    theme:
+      https://assets.calendly.com/assets/external/widget.css: { type: external }
