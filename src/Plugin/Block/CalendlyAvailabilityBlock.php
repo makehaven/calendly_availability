@@ -159,16 +159,16 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       $organization_uri = $current_user_data['resource']['current_organization'] ?? NULL;
       $event_types_fetch_url = '';
       if ($organization_uri) {
-        $this->logger->info('Fetching event types for organization: @org_uri', ['@org_uri' => $organization_uri]);
+        $this->logger->debug('Fetching event types for organization: @org_uri', ['@org_uri' => $organization_uri]);
         $event_types_fetch_url = 'https://api.calendly.com/event_types?organization=' . urlencode($organization_uri) . '&active=true&count=100&sort=name:asc';
       } else {
-        $this->logger->info('Organization URI not found for current user @user_uri. Fetching event types for current user only.', ['@user_uri' => $current_user_uri]);
+        $this->logger->debug('Organization URI not found for current user @user_uri. Fetching event types for current user only.', ['@user_uri' => $current_user_uri]);
         $event_types_fetch_url = 'https://api.calendly.com/event_types?user=' . urlencode($current_user_uri) . '&active=true&count=100&sort=name:asc';
       }
       $event_types_response = $this->httpClient->get($event_types_fetch_url, ['headers' => $headers]);
       $event_types_data = json_decode($event_types_response->getBody()->getContents(), TRUE);
       if (!empty($event_types_data['collection'])) {
-        $this->logger->info('Received @count event types in the collection for form. Processing them.', ['@count' => count($event_types_data['collection'])]);
+        $this->logger->debug('Received @count event types in the collection for form. Processing them.', ['@count' => count($event_types_data['collection'])]);
         foreach ($event_types_data['collection'] as $et) {
             if (isset($et['uri'], $et['name'])) {
                 $event_uri_val = $et['uri']; $event_name_val = $et['name'];
@@ -178,7 +178,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
             } else { $this->logger->debug('Skipping an event type from form collection due to missing URI or name field: @event_data', ['@event_data' => json_encode($et)]); }
         }
         if (!empty($event_options)) { asort($event_options); }
-      } else { $this->logger->info('No event types collection was found in the API response for form. Raw API response data: @data', ['@data' => json_encode($event_types_data)]);}
+      } else { $this->logger->debug('No event types collection was found in the API response for form. Raw API response data: @data', ['@data' => json_encode($event_types_data)]);}
     } catch (RequestException $e) { $this->logger->error('Failed to fetch Calendly event types for block form: @message. Vars: @vars', ['@message' => $e->getMessage(),'@vars' => Error::decodeException($e),]); return []; }
       catch (\Exception $e) { $this->logger->error('A general error occurred while fetching Calendly event types for block form: @message. Vars: @vars', ['@message' => $e->getMessage(),'@vars' => Error::decodeException($e),]); return []; }
     return $event_options;
@@ -461,15 +461,15 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
 
     $config = $this->getConfiguration();
     try {
-      $this->logger->info('--- Starting Calendly Availability Fetch for block display ---');
+      $this->logger->debug('--- Starting Calendly Availability Fetch for block display ---');
       $selected_uris = $config['selected_event_type_uris'] ?? [];
       $keywords_string = $config['event_type_keywords'] ?? '';
       $keywords = !empty($keywords_string) ? array_map('trim', explode(',', strtolower($keywords_string))) : [];
       $days_to_show = (int) ($config['days_to_show'] ?? 7);
 
-      if (!empty($selected_uris)) { $this->logger->info('Filtering by explicitly selected URIs: @uris', ['@uris' => json_encode($selected_uris)]); }
-      else { $this->logger->info('Using keyword filter: "@keywords"', ['@keywords' => $keywords_string]); }
-      $this->logger->info('Days to show: @days', ['@days' => $days_to_show]);
+      if (!empty($selected_uris)) { $this->logger->debug('Filtering by explicitly selected URIs: @uris', ['@uris' => json_encode($selected_uris)]); }
+      else { $this->logger->debug('Using keyword filter: "@keywords"', ['@keywords' => $keywords_string]); }
+      $this->logger->debug('Days to show: @days', ['@days' => $days_to_show]);
 
       $available_slots_raw = $this->getConsolidatedAvailability($token, $selected_uris, $keywords, $days_to_show);
 
@@ -515,7 +515,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
         } catch (\Exception $e) { $this->logger->error('Error processing slot start_time for display: @message for slot "@slot_name"', ['@message' => $e->getMessage(), '@slot_name' => ($slot['event_name'] ?? 'Unknown event')]); }
       }
       
-      $this->logger->info('Successfully processed @count available slots for display.', ['@count' => count($processed_slots)]);
+      $this->logger->debug('Successfully processed @count available slots for display.', ['@count' => count($processed_slots)]);
       
       $display_mode = $config['display_mode'];
       $build_array = [
@@ -527,7 +527,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       ];
 
       if ($display_mode === 'week_table') {
-        $this->logger->info('Display mode: week_table. Preparing weekly schedule data.');
+        $this->logger->debug('Display mode: week_table. Preparing weekly schedule data.');
         $weekly_data = $this->_prepare_weekly_schedule_data($processed_slots);
         
         if (empty($weekly_data['day_keys_ordered']) || empty($weekly_data['time_block_headers'])) {
@@ -559,14 +559,14 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
     $headers = ['Authorization' => "Bearer $token",'Content-Type' => 'application/json',];
     $this->logger->debug('Using token for API calls: @token_fragment...', ['@token_fragment' => substr($token, 0, 10)]);
     $user_uri = NULL; $current_user_data_for_runtime = NULL;
-    $this->logger->info('Step 1: Fetching current user URI from /users/me...');
+    $this->logger->debug('Step 1: Fetching current user URI from /users/me...');
     try {
       $response = $this->httpClient->get('https://api.calendly.com/users/me', ['headers' => $headers]);
       $user_data_raw = $response->getBody()->getContents();
       $current_user_data_for_runtime = json_decode($user_data_raw, TRUE);
       if (isset($current_user_data_for_runtime['resource']['uri'])) {
         $user_uri = $current_user_data_for_runtime['resource']['uri'];
-        $this->logger->info('Fetched user URI: @uri.', ['@uri' => $user_uri]);
+        $this->logger->debug('Fetched user URI: @uri.', ['@uri' => $user_uri]);
       } else { $this->logger->warning('Could not determine user URI from /users/me.'); return []; }
     } catch (RequestException $e) { $this->logger->error('Guzzle error fetching user URI: @msg', ['@msg' => $e->getMessage()]); return [];}
     
@@ -575,17 +575,17 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
 
     $raw_event_type_list_for_processing = [];
     if (!empty($selected_uris)) {
-        $this->logger->info('Runtime: Fetching details for @count explicitly selected event URIs.', ['@count' => count($selected_uris)]);
+        $this->logger->debug('Runtime: Fetching details for @count explicitly selected event URIs.', ['@count' => count($selected_uris)]);
         foreach($selected_uris as $uri) { try { $resp = $this->httpClient->get($uri, ['headers' => $headers]); $data = json_decode($resp->getBody()->getContents(), TRUE); if(isset($data['resource'])) $raw_event_type_list_for_processing[] = $data['resource']; } catch (\Exception $_e){ $this->logger->error('Failed to fetch selected URI @uri: @msg', ['@uri' => $uri, '@msg' => $_e->getMessage()]);}}
     } else {
         $organization_uri_for_runtime = $current_user_data_for_runtime['resource']['current_organization'] ?? null;
         $fetch_url = '';
         if ($organization_uri_for_runtime) {
             $fetch_url = 'https://api.calendly.com/event_types?organization=' . urlencode($organization_uri_for_runtime) . '&active=true&count=100&sort=name:asc';
-            $this->logger->info('Runtime: No specific selections. Fetching event types for organization: @org_uri', ['@org_uri' => $organization_uri_for_runtime]);
+            $this->logger->debug('Runtime: No specific selections. Fetching event types for organization: @org_uri', ['@org_uri' => $organization_uri_for_runtime]);
         } elseif ($user_uri) { 
             $fetch_url = 'https://api.calendly.com/event_types?user=' . urlencode($user_uri) . '&active=true&count=100&sort=name:asc';
-            $this->logger->info('Runtime: No specific selections or org URI. Fetching event types for current user: @user_uri', ['@user_uri' => $user_uri]);
+            $this->logger->debug('Runtime: No specific selections or org URI. Fetching event types for current user: @user_uri', ['@user_uri' => $user_uri]);
         }
         if ($fetch_url) { try { $resp = $this->httpClient->get($fetch_url, ['headers' => $headers]); $data = json_decode($resp->getBody()->getContents(), TRUE); if(!empty($data['collection'])) $raw_event_type_list_for_processing = $data['collection']; else {$this->logger->info('Runtime: Fetched event types but collection is empty. URL: @url', ['@url' => $fetch_url]);}} catch (\Exception $_e){$this->logger->error('Failed to fetch event types from @url : @msg', ['@url' => $fetch_url, '@msg' => $_e->getMessage()]); return[];}}
         else { $this->logger->warning('Runtime: Could not determine URL to fetch event types (no org URI and no user URI).'); return[]; }
@@ -608,7 +608,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
     }
 
     if (empty($relevant_event_types_processed)) { $this->logger->info('No relevant event types found after owner processing and keyword filtering.'); return []; }
-    $this->logger->info('Processed @count relevant event types with owner names.', ['@count' => count($relevant_event_types_processed)]);
+    $this->logger->debug('Processed @count relevant event types with owner names.', ['@count' => count($relevant_event_types_processed)]);
 
     $max_days_per_request = 7; 
 
@@ -630,7 +630,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
             $start_time_param_slots = $chunk_start_date->format('Y-m-d\TH:i:s\Z');
             $end_time_param_slots = $chunk_end_date->format('Y-m-d\TH:i:s\Z');
             
-            $this->logger->info('Fetching availability for @name from @start to @end', ['@name' => $event_type_name, '@start' => $start_time_param_slots, '@end' => $end_time_param_slots]);
+            $this->logger->debug('Fetching availability for @name from @start to @end', ['@name' => $event_type_name, '@start' => $start_time_param_slots, '@end' => $end_time_param_slots]);
 
             $query_params = ['event_type' => $event_type_uri, 'start_time' => $start_time_param_slots, 'end_time' => $end_time_param_slots];
             try {
@@ -663,7 +663,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
 
         usort($all_available_slots, function($a, $b) { return strtotime($a['start_time']) - strtotime($b['start_time']); });
     }
-    $this->logger->info('--- Finished Calendly Availability Fetch --- Returning @count slots.', ['@count' => count($all_available_slots)]); 
+    $this->logger->debug('--- Finished Calendly Availability Fetch --- Returning @count slots.', ['@count' => count($all_available_slots)]);
     return $all_available_slots;
   }
 }
