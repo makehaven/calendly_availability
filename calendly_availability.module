@@ -5,6 +5,7 @@
  * Contains calendly_availability.module.
  */
 
+use Drupal\Core\Datetime\DrupalDateTime;
 use Drupal\Core\Routing\RouteMatchInterface;
 
 /**
@@ -50,6 +51,71 @@ function calendly_availability_theme($existing, $type, $theme, $path) {
         'message_for_fallback' => '', // Name used in build()
         'fallback_link_text_config' => '', // Name used in build()
       ],
+    ],
+    'calendly_availability_stats' => [
+      'variables' => [
+        'stats' => [],
+      ],
+    ],
+  ];
+}
+
+/**
+ * Implements hook_makerspace_snapshot_collect_kpi().
+ */
+function calendly_availability_makerspace_snapshot_collect_kpi(array $context): array {
+  if (!\Drupal::hasService('calendly_availability.stats_collector')) {
+    return [];
+  }
+
+  $periodTimestamp = !empty($context['snapshot_date']) ? strtotime($context['snapshot_date']) : \Drupal::time()->getRequestTime();
+  $periodYear = (int) date('Y', $periodTimestamp);
+  $periodMonth = (int) date('n', $periodTimestamp);
+
+  $options = [
+    'suppress_availability' => TRUE,
+  ];
+  if (!empty($context['period_start'])) {
+    $options['start'] = new DrupalDateTime($context['period_start']);
+  }
+  if (!empty($context['period_end'])) {
+    $options['end'] = new DrupalDateTime($context['period_end']);
+  }
+
+  try {
+    $stats = \Drupal::service('calendly_availability.stats_collector')->collect($options);
+  }
+  catch (\Exception $e) {
+    \Drupal::logger('calendly_availability')->error('Failed to collect Calendly KPIs: @msg', ['@msg' => $e->getMessage()]);
+    return [];
+  }
+
+  if (($stats['status'] ?? '') !== 'ok') {
+    return [];
+  }
+
+  $snapshot = $stats['snapshot'] ?? [];
+
+  return [
+    'calendly_tours_completed' => [
+      'value' => $snapshot['tours'] ?? 0,
+      'period_year' => $periodYear,
+      'period_month' => $periodMonth,
+    ],
+    'calendly_orientations_completed' => [
+      'value' => $snapshot['orientations'] ?? 0,
+      'period_year' => $periodYear,
+      'period_month' => $periodMonth,
+    ],
+    'calendly_other_meetings_completed' => [
+      'value' => $snapshot['other_meetings'] ?? 0,
+      'period_year' => $periodYear,
+      'period_month' => $periodMonth,
+    ],
+    'calendly_total_events' => [
+      'value' => $snapshot['total_events'] ?? 0,
+      'period_year' => $periodYear,
+      'period_month' => $periodMonth,
     ],
   ];
 }

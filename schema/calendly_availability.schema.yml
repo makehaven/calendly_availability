@@ -45,6 +45,18 @@ calendly_availability.settings:
     token_expires_at:
       type: integer
       label: 'Token Expiration Timestamp'
+    stats_default_days:
+      type: integer
+      label: 'Default stats lookback window (days)'
+    stats_availability_window_days:
+      type: integer
+      label: 'Future availability window for stats (days)'
+    stats_tour_keywords:
+      type: string
+      label: 'Tour keyword matches'
+    stats_orientation_keywords:
+      type: string
+      label: 'Orientation keyword matches'
 
 # This part defines the settings for each individual block instance.
 # It is preserved exactly from your original file.
@@ -66,6 +78,9 @@ block.settings.calendly_availability_block:
       label: 'Selected Event Types (Overrides Keywords if set)'
       sequence:
         type: string
+    stats_category:
+      type: string
+      label: 'Stats category override'
     display_mode:
       type: string
       label: 'Display Mode'

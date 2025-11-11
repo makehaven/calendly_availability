@@ -21,3 +21,19 @@ calendly_availability.diagnostics:
     _title: 'Calendly Diagnostics'
   requirements:
     _permission: 'administer site configuration'
+
+calendly_availability.stats:
+  path: '/admin/reports/calendly/stats'
+  defaults:
+    _controller: '\Drupal\calendly_availability\Controller\CalendlyStatsController::view'
+    _title: 'Calendly Tours & Meetings'
+  requirements:
+    _permission: 'view calendly availability stats'
+
+calendly_availability.stats_json:
+  path: '/admin/reports/calendly/stats/data'
+  defaults:
+    _controller: '\Drupal\calendly_availability\Controller\CalendlyStatsController::json'
+    _title: 'Calendly Stats JSON'
+  requirements:
+    _permission: 'view calendly availability stats'

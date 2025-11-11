@@ -36,6 +36,14 @@ class CalendlySettingsForm extends ConfigFormBase {
     $form['instructions'] = [
       '#markup' => $this->t('<p>Configure the credentials for each of your environments. The module will automatically use the settings that match the current website\'s URL. You will need a separate OAuth App in Calendly for each environment.</p>'),
     ];
+
+    $form['stats_link'] = [
+      '#type' => 'item',
+      '#markup' => $this->t('<p><strong>Need utilization insights?</strong> Visit the <a href=":stats">Calendly Tours &amp; Meetings dashboard</a> to see tour/orientation performance and export-friendly counts.</p>', [
+        ':stats' => Url::fromRoute('calendly_availability.stats')->toString(),
+      ]),
+      '#weight' => -50,
+    ];
     
     // --- Production Environment Settings ---
     $form['production'] = [
@@ -112,6 +120,38 @@ class CalendlySettingsForm extends ConfigFormBase {
       '#required' => FALSE,
     ];
 
+    $form['stats'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Statistics defaults'),
+      '#open' => TRUE,
+    ];
+    $form['stats']['stats_default_days'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Default lookback window (days)'),
+      '#default_value' => $config->get('stats_default_days') ?? 30,
+      '#min' => 1,
+      '#description' => $this->t('How many days of Calendly history to include when no explicit range is provided.'),
+    ];
+    $form['stats']['stats_availability_window_days'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Availability window (days)'),
+      '#default_value' => $config->get('stats_availability_window_days') ?? 14,
+      '#min' => 1,
+      '#description' => $this->t('Future window for counting available slots per staff member.'),
+    ];
+    $form['stats']['stats_tour_keywords'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Tour keywords'),
+      '#default_value' => $config->get('stats_tour_keywords') ?? 'tour',
+      '#description' => $this->t('Comma-separated keywords that identify tour event types.'),
+    ];
+    $form['stats']['stats_orientation_keywords'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Orientation keywords'),
+      '#default_value' => $config->get('stats_orientation_keywords') ?? 'orientation,orient,safety,walk',
+      '#description' => $this->t('Comma-separated keywords that identify orientation event types.'),
+    ];
+
     // --- Authorization Button ---
     $current_credentials = self::getCredentialsForCurrentHost(\Drupal::config('calendly_availability.settings'));
     if (!empty($current_credentials['client_id'])) {
@@ -159,6 +199,13 @@ class CalendlySettingsForm extends ConfigFormBase {
     }
 
     $config->set('webhook_signing_key', $form_state->getValue('webhook_signing_key'));
+
+    $statsValues = $form_state->getValue('stats');
+    $config
+      ->set('stats_default_days', max(1, (int) ($statsValues['stats_default_days'] ?? 30)))
+      ->set('stats_availability_window_days', max(1, (int) ($statsValues['stats_availability_window_days'] ?? 14)))
+      ->set('stats_tour_keywords', $statsValues['stats_tour_keywords'] ?? 'tour')
+      ->set('stats_orientation_keywords', $statsValues['stats_orientation_keywords'] ?? 'orientation,orient');
     $config->save();
 
     parent::submitForm($form, $form_state);

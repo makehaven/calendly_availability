@@ -1,0 +1,14 @@
+services:
+  logger.channel.calendly_availability:
+    parent: logger.channel_base
+    arguments: ['calendly_availability']
+
+  calendly_availability.stats_collector:
+    class: Drupal\calendly_availability\Service\CalendlyStatsCollector
+    arguments:
+      - '@http_client'
+      - '@logger.channel.calendly_availability'
+      - '@date.formatter'
+      - '@datetime.time'
+      - '@config.factory'
+      - '@entity_type.manager'

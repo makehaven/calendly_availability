@@ -15,3 +15,8 @@ calendly_widget:
   css:
     theme:
       https://assets.calendly.com/assets/external/widget.css: { type: external }
+
+stats:
+  css:
+    theme:
+      css/calendly_stats.css: {}

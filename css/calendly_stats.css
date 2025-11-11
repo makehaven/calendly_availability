@@ -1,0 +1,176 @@
+.calendly-stats {
+  padding: 1rem 0;
+}
+
+.calendly-stats__range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  gap: 0.75rem;
+}
+
+.calendly-stats__range-links {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.calendly-stats__range-links a {
+  border: 1px solid #cbd5f5;
+  border-radius: 999px;
+  padding: 0.25rem 0.9rem;
+  font-size: 0.85rem;
+  text-decoration: none;
+  color: #1d4ed8;
+  transition: background 0.15s ease, color 0.15s ease, border 0.15s ease;
+}
+
+.calendly-stats__range-links a:hover {
+  background: #e0e7ff;
+}
+
+.calendly-stats__range-links a.is-active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+.calendly-stats__range-help {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 1rem;
+}
+
+.calendly-stats__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.calendly-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.calendly-card__label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.calendly-card__value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.calendly-card__foot {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.calendly-card__delta {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: #16a34a;
+}
+
+.calendly-comparison {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.calendly-comparison__panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  background: #fff;
+}
+
+.calendly-comparison__panel h3 {
+  margin: 0 0 0.35rem;
+}
+
+.calendly-comparison__period {
+  margin: 0 0 0.75rem;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.calendly-comparison__panel ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.calendly-comparison__panel li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.95rem;
+}
+
+.calendly-comparison__panel li:last-child {
+  border-bottom: 0;
+}
+
+.calendly-stats__section {
+  margin-bottom: 2rem;
+}
+
+.calendly-stats__section h2 {
+  margin-bottom: 0.75rem;
+}
+
+.calendly-stats__period-note {
+  margin: 0 0 0.75rem;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.calendly-stats table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.calendly-stats table th,
+.calendly-stats table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+}
+
+.calendly-stats table th {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.calendly-stats__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+}
+
+.calendly-stats__list li {
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.calendly-stats--error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 1rem;
+}

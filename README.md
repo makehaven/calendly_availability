@@ -16,6 +16,7 @@ The module is designed to be flexible and configurable, allowing site administra
     * Configure a fallback URL for users if no slots are available.
 * **OAuth Support**: Securely connects to the Calendly API using OAuth 2.0 for fetching availability.
 * **Multi-environment configuration**: Supports different credentials for production, testing, and development environments.
+* **Stats dashboard + API**: Surfaces completed tours/orientations per staff member, popular times, and availability leaders both in the UI and via JSON for snapshot ingestion.
 
 ## Installation
 
@@ -74,3 +75,23 @@ The module also includes a basic CSS file (`css/calendly_availability.css`) that
 ## Diagnostics
 
 The module provides a diagnostics page to help you troubleshoot API connectivity issues. You can access it at **Configuration > Services > Calendly API Settings > Diagnostics** (`/admin/config/services/calendly_availability/diagnostics`). This page will show you the status of your API token and whether the module can successfully connect to the Calendly API.
+
+## Calendly Utilization Stats
+
+Visit `/admin/reports/calendly/stats` (permission: `view calendly availability stats`) to see a rolling summary of:
+
+* Completed counts for every Calendly block (the dashboard automatically uses each block's title as the category label) over common windows (30/60/90/120-day, Month-to-date, Last month, Quarter-to-date, and Last quarter quick filters included) with prior-period comparisons surfaced directly on the cards and comparison panels.
+* Staff-level breakdowns with popular meeting hours and average durations (each block can now declare which stats category its event types roll up to).
+* Upcoming availability leaders (next _N_ days) so you can spot coverage gaps.
+
+The same payload is exposed at `/admin/reports/calendly/stats/data` for downstream consumers. Programmatic callers can also inject the `calendly_availability.stats_collector` service and call `collect()` / `buildSnapshotPayload()` directly.
+
+Each Calendly Availability block exposes a **Stats category override** setting. If you select specific event types and choose "Tours", "Orientations", or "Other meetings", the stats dashboard (and downstream KPIs) will classify the associated bookings using that explicit mapping instead of keyword guessing.
+
+If you leave the override blank, the stats dashboard will simply use the block's title as the category label (ideal when you want the cards to read "Schedule a Safety Walk Through…", etc.).
+
+The module now implements `hook_makerspace_snapshot_collect_kpi()` so the makerspace_snapshot module automatically stores the Calendly KPIs (tours, orientations, other meetings, total events) during each snapshot run.
+
+## Open Tasks
+
+* Investigate the Calendly API range pagination/limits so the stats dashboard always matches large exports (current implementation sometimes under-counts when a period includes more than 100 events).

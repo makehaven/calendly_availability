@@ -3,11 +3,13 @@
 namespace Drupal\calendly_availability\Plugin\Block;
 
 use Drupal\Core\Block\BlockBase;
+use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Datetime\DateFormatterInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
 use Drupal\Core\Url;
 use Drupal\Core\Utility\Error; // For logging exceptions
+use Drupal\calendly_availability\Service\CalendlyTokenTrait;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\RequestException;
 use Psr\Log\LoggerInterface;
@@ -23,9 +25,12 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  */
 class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPluginInterface {
 
+  use CalendlyTokenTrait;
+
   protected $httpClient;
   protected $logger;
   protected $dateFormatter;
+  protected ConfigFactoryInterface $configFactory;
 
   public function __construct(
     array $configuration,
@@ -33,12 +38,14 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
     $plugin_definition,
     ClientInterface $http_client,
     LoggerInterface $logger,
-    DateFormatterInterface $date_formatter
+    DateFormatterInterface $date_formatter,
+    ConfigFactoryInterface $config_factory
   ) {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
     $this->httpClient = $http_client;
     $this->logger = $logger;
     $this->dateFormatter = $date_formatter;
+    $this->configFactory = $config_factory;
   }
 
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
@@ -48,58 +55,9 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       $plugin_definition,
       $container->get('http_client'),
       $container->get('logger.factory')->get('calendly_availability'),
-      $container->get('date.formatter')
+      $container->get('date.formatter'),
+      $container->get('config.factory')
     );
-  }
-
-  /**
-   * Ensures the access token is valid, refreshing it if necessary.
-   */
-  private function _getValidAccessToken() {
-    $config = \Drupal::configFactory()->getEditable('calendly_availability.settings');
-    $accessToken = $config->get('personal_access_token');
-    $refreshToken = $config->get('refresh_token');
-    $expiresAt = $config->get('token_expires_at');
-
-    if ((!$expiresAt || time() > ($expiresAt - 300)) && $refreshToken) {
-      $this->logger->info('Calendly access token is expired or expiring soon. Attempting to refresh.');
-      try {
-        $client_id = $config->get('client_id');
-        $client_secret = $config->get('client_secret');
-
-        $response = $this->httpClient->post('https://auth.calendly.com/oauth/token', [
-          'form_params' => [
-            'grant_type' => 'refresh_token',
-            'refresh_token' => $refreshToken,
-            'client_id' => $client_id,
-            'client_secret' => $client_secret,
-          ],
-        ]);
-
-        $data = json_decode($response->getBody()->getContents(), TRUE);
-
-        if (!empty($data['access_token'])) {
-          $newAccessToken = $data['access_token'];
-          $newRefreshToken = $data['refresh_token'];
-          $newExpiresIn = $data['expires_in'];
-
-          $config
-            ->set('personal_access_token', $newAccessToken)
-            ->set('refresh_token', $newRefreshToken)
-            ->set('token_expires_at', time() + $newExpiresIn)
-            ->save();
-
-          $this->logger->info('Successfully refreshed Calendly access token.');
-          return $newAccessToken;
-        }
-      } catch (RequestException $e) {
-        $this->logger->error('Failed to refresh Calendly access token: @message', ['@message' => $e->getMessage()]);
-        $config->set('personal_access_token', '')->set('refresh_token', '')->save();
-        return NULL;
-      }
-    }
-
-    return $accessToken;
   }
 
   public function defaultConfiguration() {
@@ -108,6 +66,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       'button_action_text' => $this->t('Schedule'),
       'days_to_show' => 7,
       'selected_event_type_uris' => [],
+      'stats_category' => '',
       'display_mode' => 'week_table',
       'fallback_url' => '',
       'fallback_link_text' => $this->t('None of these times work for me'),
@@ -145,7 +104,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
 
   protected function _get_available_event_types_for_form() {
     $this->logger->debug('CALLED: _get_available_event_types_for_form at ' . date('Y-m-d H:i:s'));
-    $token = $this->_getValidAccessToken();
+    $token = $this->getValidAccessToken();
     if (empty($token)) { $this->logger->warning('Cannot fetch event types for form: Calendly token is missing or invalid.'); return []; }
     $headers = ['Authorization' => "Bearer $token", 'Content-Type' => 'application/json'];
     $event_options = []; $user_names_cache = [];
@@ -208,7 +167,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       '#weight' => -5,
     ];
 
-    $calendly_token = $this->_getValidAccessToken();
+    $calendly_token = $this->getValidAccessToken();
     if (empty($calendly_token)) {
         $form['selected_event_type_uris_fieldset']['token_missing_message'] = [
             '#type' => 'item',
@@ -231,6 +190,19 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
             ];
         }
     }
+
+    $form['selected_event_type_uris_fieldset']['stats_category'] = [
+      '#type' => 'select',
+      '#title' => $this->t('Stats category override'),
+      '#description' => $this->t('If set, the Calendly stats dashboard will treat the selected event types from this block as the chosen category.'),
+      '#options' => [
+        '' => $this->t('Auto (keyword detection)'),
+        'tour' => $this->t('Tours'),
+        'orientation' => $this->t('Orientations'),
+        'other' => $this->t('Other meetings'),
+      ],
+      '#default_value' => $config['stats_category'] ?? '',
+    ];
 
     $form['event_type_keywords'] = [
       '#type' => 'textfield',
@@ -330,6 +302,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
              $this->configuration['selected_event_type_uris'] = [];
         }
     }
+    $this->configuration['stats_category'] = $values['selected_event_type_uris_fieldset']['stats_category'] ?? '';
 
     $this->configuration['event_type_keywords'] = $values['event_type_keywords'];
     
@@ -456,7 +429,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
   }
 
   public function build() {
-    $token = $this->_getValidAccessToken();
+    $token = $this->getValidAccessToken();
     if (empty($token)) { return ['#markup' => $this->t('Calendly API is not configured or token is invalid. Please <a href="@link">configure settings</a>.', ['@link' => Url::fromRoute('calendly_availability.settings')->toString()])]; }
 
     $config = $this->getConfiguration();

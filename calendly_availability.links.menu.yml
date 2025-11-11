@@ -5,3 +5,10 @@ calendly_availability.settings:
   route_name: calendly_availability.settings
   menu_name: admin
   weight: 100
+
+calendly_availability.stats:
+  title: 'Calendly tours & meetings'
+  description: 'View Calendly tour/orientation performance metrics.'
+  parent: system.admin_reports
+  route_name: calendly_availability.stats
+  weight: 20

@@ -1,0 +1,248 @@
+{% set totals = stats.totals|default({}) %}
+{% set staff = stats.staff|default([]) %}
+{% set period = stats.period|default({}) %}
+{% set time = stats.time_distribution|default({}) %}
+{% set availability = stats.availability_window|default({}) %}
+{% set event_types = stats.event_types|default([]) %}
+{% set categories = stats.categories|default([]) %}
+{% set categories_by_key = stats.categories_by_key|default({}) %}
+{% set range_links = stats.meta.range_links|default([]) %}
+{% set comparison = stats.comparison|default({}) %}
+{% set comparison_categories = comparison.categories_by_key|default({}) %}
+
+<div class="calendly-stats">
+  <div class="calendly-stats__range">
+    <div class="calendly-stats__range-label">
+      <strong>{{ 'Current window'|t }}:</strong> {{ period.label }}{% if period.days %} ({{ period.days }} {{ 'days'|t }}){% endif %}
+    </div>
+    {% if range_links %}
+      <div class="calendly-stats__range-links">
+        {% for link in range_links %}
+          <a href="{{ link.url }}" class="{{ link.active ? 'is-active' : '' }}">{{ link.label }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+  <div class="calendly-stats__range-help">
+    {{ 'Tip: the default view is a rolling 30-day window. Use the preset links to jump to full months or quarters and compare against the previous period.'|t }}
+  </div>
+
+  <div class="calendly-stats__summary">
+    {% if categories %}
+      {% for category in categories %}
+        {% set comparison_row = comparison_categories[category.key]|default(null) %}
+        {% set previous_count = comparison_row.count|default(0) %}
+        {% set delta = category.count - previous_count %}
+        <div class="calendly-card">
+          <div class="calendly-card__label">{{ category.label }}</div>
+          <div class="calendly-card__value">{{ category.count }}</div>
+          <div class="calendly-card__foot">{{ period.label }}</div>
+          {% if comparison_row %}
+            <div class="calendly-card__delta">
+              {{ 'Prev: @count (@delta)'|t({'@count': previous_count, '@delta': delta|number_format(0, '.', ',')}) }}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="calendly-card">
+        <div class="calendly-card__label">{{ 'Tours'|t }}</div>
+        <div class="calendly-card__value">{{ totals.tours|default(0) }}</div>
+        <div class="calendly-card__foot">{{ period.label }}</div>
+        {% if comparison.totals.tours is defined %}
+          <div class="calendly-card__delta">{{ 'Prev: @count'|t({'@count': comparison.totals.tours}) }}</div>
+        {% endif %}
+      </div>
+      <div class="calendly-card">
+        <div class="calendly-card__label">{{ 'Orientations'|t }}</div>
+        <div class="calendly-card__value">{{ totals.orientations|default(0) }}</div>
+        <div class="calendly-card__foot">{{ 'Completed events'|t }}</div>
+        {% if comparison.totals.orientations is defined %}
+          <div class="calendly-card__delta">{{ 'Prev: @count'|t({'@count': comparison.totals.orientations}) }}</div>
+        {% endif %}
+      </div>
+      <div class="calendly-card">
+        <div class="calendly-card__label">{{ 'Other meetings'|t }}</div>
+        <div class="calendly-card__value">{{ totals.other|default(0) }}</div>
+        <div class="calendly-card__foot">{{ 'Non-tour/orientation'|t }}</div>
+        {% if comparison.totals.other is defined %}
+          <div class="calendly-card__delta">{{ 'Prev: @count'|t({'@count': comparison.totals.other}) }}</div>
+        {% endif %}
+      </div>
+    {% endif %}
+    <div class="calendly-card">
+      <div class="calendly-card__label">{{ 'Avg. daily events'|t }}</div>
+      <div class="calendly-card__value">{{ totals.avg_daily_events|default(0) }}</div>
+      <div class="calendly-card__foot">{{ 'Rolling window'|t }}</div>
+      {% if comparison.totals is defined and comparison.period is defined %}
+        {% set comparison_avg = comparison.period.days ? (comparison.totals.events|default(0) / comparison.period.days)|number_format(2) : '0' %}
+        <div class="calendly-card__delta">{{ 'Prev avg: @val'|t({'@val': comparison_avg}) }}</div>
+      {% endif %}
+    </div>
+    {% if availability.enabled %}
+      <div class="calendly-card">
+        <div class="calendly-card__label">{{ 'Upcoming slots'|t }}</div>
+        <div class="calendly-card__value">{{ availability.total_slots|default(0) }}</div>
+        <div class="calendly-card__foot">{{ 'Next @days days'|t({'@days': availability.days|default(0)}) }}</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <section class="calendly-stats__section">
+    <h2>{{ 'Staff performance'|t }}</h2>
+    {% if period.label %}
+      <p class="calendly-stats__period-note">{{ 'Data window: @label (@days days)'|t({'@label': period.label, '@days': period.days|default('?')}) }}</p>
+    {% endif %}
+    {% if staff %}
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ 'Staff'|t }}</th>
+              <th>{{ 'Tours'|t }}</th>
+              <th>{{ 'Orientations'|t }}</th>
+              <th>{{ 'Other'|t }}</th>
+              <th>{{ 'Total'|t }}</th>
+              <th>{{ 'Popular time'|t }}</th>
+              <th>{{ 'Next slots'|t }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in staff %}
+              <tr>
+                <td>{{ row.name }}</td>
+                <td>{{ row.events.tours|default(0) }}</td>
+                <td>{{ row.events.orientations|default(0) }}</td>
+                <td>{{ row.events.other|default(0) }}</td>
+                <td><strong>{{ row.total|default(0) }}</strong></td>
+                <td>{{ row.popular_hour|default('—') }}</td>
+                <td>{{ row.available_slots is not null ? row.available_slots : '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th>{{ 'Totals'|t }}</th>
+              <th>{{ totals.tours|default(0) }}</th>
+              <th>{{ totals.orientations|default(0) }}</th>
+              <th>{{ totals.other|default(0) }}</th>
+              <th>{{ totals.events|default(0) }}</th>
+              <th colspan="2"></th>
+              <th>{{ availability.total_slots|default('—') }}</th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    {% else %}
+      <p>{{ 'No staff activity was recorded for this period.'|t }}</p>
+    {% endif %}
+  </section>
+
+  <section class="calendly-stats__section">
+    <h2>{{ 'Popular time slots'|t }}</h2>
+    {% if time.top_hours|default([]) %}
+      <ul class="calendly-stats__list">
+        {% for entry in time.top_hours %}
+          <li>
+            <div><strong>{{ entry.label }}</strong></div>
+            <div>{{ '@count bookings'|t({'@count': entry.value}) }}</div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>{{ 'Not enough data to determine popular times.'|t }}</p>
+    {% endif %}
+  </section>
+
+  <section class="calendly-stats__section">
+    <h2>{{ 'Event types'|t }}</h2>
+    {% if event_types %}
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ 'Event type'|t }}</th>
+              <th>{{ 'Category'|t }}</th>
+              <th>{{ 'Completed'|t }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for eventType in event_types %}
+              <tr>
+                <td>{{ eventType.name }}</td>
+                <td>{{ eventType.category|capitalize }}</td>
+                <td>{{ eventType.count }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>{{ 'No event type activity was recorded.'|t }}</p>
+    {% endif %}
+  </section>
+
+  {% if comparison.period is defined %}
+    <section class="calendly-stats__section">
+      <h2>{{ 'Period comparison'|t }}</h2>
+      <div class="calendly-comparison">
+        <div class="calendly-comparison__panel">
+          <h3>{{ 'Current period'|t }}</h3>
+          <p class="calendly-comparison__period">{{ period.label }}</p>
+          <ul>
+            {% for row in categories %}
+              <li><strong>{{ row.label }}</strong>: {{ row.count }}</li>
+            {% else %}
+              <li>{{ 'No activity recorded.'|t }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="calendly-comparison__panel">
+          <h3>{{ 'Previous period'|t }}</h3>
+          <p class="calendly-comparison__period">{{ comparison.period.label }}</p>
+          <ul>
+            {% for row in comparison.categories|default([]) %}
+              <li><strong>{{ row.label }}</strong>: {{ row.count }}</li>
+            {% else %}
+              <li>{{ 'No activity recorded.'|t }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if availability.enabled %}
+    <section class="calendly-stats__section">
+      <h2>{{ 'Upcoming availability'|t }}</h2>
+      {% if availability.staff|default([]) %}
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>{{ 'Staff'|t }}</th>
+                <th>{{ 'Available slots'|t }}</th>
+                <th>{{ 'Top event types'|t }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in availability.staff %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.slots|default(0) }}</td>
+                  <td>
+                    {% for event_type, count in row.event_types|slice(0, 3) %}
+                      <div>{{ event_type }} &times; {{ count }}</div>
+                    {% endfor %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p>{{ 'No open slots were found in the configured window.'|t }}</p>
+      {% endif %}
+    </section>
+  {% endif %}
+</div>
