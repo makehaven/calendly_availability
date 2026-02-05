@@ -57,6 +57,11 @@ trait CalendlyTokenTrait {
       }
       catch (RequestException $e) {
         $this->logger->error('Failed to refresh Calendly access token: @message', ['@message' => $e->getMessage()]);
+        // If we failed to refresh and the token is already expired, return NULL 
+        // so the consumer knows we don't have a usable token.
+        if ($expiresAt && time() > $expiresAt) {
+          return NULL;
+        }
         return $accessToken;
       }
     }

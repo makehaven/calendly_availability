@@ -218,6 +218,7 @@ class CalendlySettingsForm extends ConfigFormBase {
     $current_host = \Drupal::request()->getSchemeAndHttpHost();
     $environments = ['production', 'testing', 'development'];
 
+    // Try to find an exact match for the current host.
     foreach ($environments as $env) {
       $base_url = $config->get($env . '_base_url');
       if (!empty($base_url) && strcasecmp($base_url, $current_host) == 0) {
@@ -227,6 +228,28 @@ class CalendlySettingsForm extends ConfigFormBase {
         ];
       }
     }
+
+    // Fallback 1: Try to find ANY environment that has credentials.
+    // This is helpful for local dev/Lando where URLs may not be exactly matched.
+    foreach ($environments as $env) {
+      $client_id = $config->get($env . '_client_id');
+      $client_secret = $config->get($env . '_client_secret');
+      if (!empty($client_id) && !empty($client_secret)) {
+        return [
+          'client_id' => $client_id,
+          'client_secret' => $client_secret,
+        ];
+      }
+    }
+
+    // Fallback 2: Check for legacy top-level credentials.
+    if ($config->get('client_id') && $config->get('client_secret')) {
+      return [
+        'client_id' => $config->get('client_id'),
+        'client_secret' => $config->get('client_secret'),
+      ];
+    }
+
     return [];
   }
 }

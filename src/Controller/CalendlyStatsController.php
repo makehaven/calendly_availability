@@ -37,11 +37,15 @@ class CalendlyStatsController extends ControllerBase {
     $stats = $this->statsCollector->collect($options);
 
     if (($stats['status'] ?? '') !== 'ok') {
+      $settingsUrl = Url::fromRoute('calendly_availability.settings')->toString();
       return [
         '#type' => 'container',
         '#attributes' => ['class' => ['calendly-stats', 'calendly-stats--error']],
         'message' => [
-          '#markup' => $this->t('Unable to load Calendly stats: @message', ['@message' => $stats['message'] ?? $this->t('Unknown error')]),
+          '#markup' => $this->t('Unable to load Calendly stats: @message. <a href=":settings">Go to settings to re-authorize</a>.', [
+            '@message' => $stats['message'] ?? $this->t('Unknown error'),
+            ':settings' => $settingsUrl,
+          ]),
         ],
       ];
     }
