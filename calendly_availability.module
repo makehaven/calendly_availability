@@ -7,6 +7,58 @@
 
 use Drupal\Core\Datetime\DrupalDateTime;
 use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Url;
+
+/**
+ * Implements hook_requirements().
+ */
+function calendly_availability_requirements($phase) {
+  $requirements = [];
+
+  if ($phase !== 'runtime') {
+    return $requirements;
+  }
+
+  $state = \Drupal::state();
+  $token = $state->get('calendly_availability.personal_access_token');
+  $expires_at = $state->get('calendly_availability.token_expires_at');
+  $settings_url = Url::fromRoute('calendly_availability.settings')->toString();
+
+  if (empty($token)) {
+    $requirements['calendly_availability_token'] = [
+      'title' => t('Calendly Integration'),
+      'value' => t('Not authorized'),
+      'description' => t('The Calendly integration is not authorized. New members cannot book tours or orientations. <a href=":url">Re-authorize now</a>.', [':url' => $settings_url]),
+      'severity' => REQUIREMENT_ERROR,
+    ];
+  }
+  elseif ($expires_at && time() > $expires_at) {
+    $requirements['calendly_availability_token'] = [
+      'title' => t('Calendly Integration'),
+      'value' => t('Token expired'),
+      'description' => t('The Calendly OAuth token has expired and could not be automatically refreshed. New members cannot book tours or orientations. <a href=":url">Re-authorize now</a>.', [':url' => $settings_url]),
+      'severity' => REQUIREMENT_ERROR,
+    ];
+  }
+  elseif ($expires_at && time() > ($expires_at - 86400)) {
+    // Warn within 24 hours of expiry.
+    $requirements['calendly_availability_token'] = [
+      'title' => t('Calendly Integration'),
+      'value' => t('Token expiring soon'),
+      'description' => t('The Calendly OAuth token expires within 24 hours. <a href=":url">Re-authorize now</a> to avoid disruption.', [':url' => $settings_url]),
+      'severity' => REQUIREMENT_WARNING,
+    ];
+  }
+  else {
+    $requirements['calendly_availability_token'] = [
+      'title' => t('Calendly Integration'),
+      'value' => t('Authorized'),
+      'severity' => REQUIREMENT_OK,
+    ];
+  }
+
+  return $requirements;
+}
 
 /**
  * Implements hook_help().

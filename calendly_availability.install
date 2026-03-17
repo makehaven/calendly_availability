@@ -1,0 +1,36 @@
+<?php
+
+/**
+ * @file
+ * Install, update, and uninstall functions for the calendly_availability module.
+ */
+
+/**
+ * Migrate OAuth tokens from config to state to survive config imports on deploy.
+ */
+function calendly_availability_update_10001() {
+  $config = \Drupal::configFactory()->getEditable('calendly_availability.settings');
+  $state = \Drupal::state();
+
+  $token = $config->get('personal_access_token');
+  $refresh = $config->get('refresh_token');
+  $expires = $config->get('token_expires_at');
+
+  if (!empty($token)) {
+    $state->set('calendly_availability.personal_access_token', $token);
+  }
+  if (!empty($refresh)) {
+    $state->set('calendly_availability.refresh_token', $refresh);
+  }
+  if (!empty($expires)) {
+    $state->set('calendly_availability.token_expires_at', $expires);
+  }
+
+  // Remove tokens from config so they are not re-imported from YAML.
+  $config->clear('personal_access_token')
+    ->clear('refresh_token')
+    ->clear('token_expires_at')
+    ->save();
+
+  return t('Calendly OAuth tokens migrated from config to state storage.');
+}

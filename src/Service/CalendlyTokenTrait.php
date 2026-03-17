@@ -18,10 +18,11 @@ trait CalendlyTokenTrait {
       throw new \RuntimeException('CalendlyTokenTrait requires a configFactory property.');
     }
 
-    $config = $this->configFactory->getEditable('calendly_availability.settings');
-    $accessToken = $config->get('personal_access_token');
-    $refreshToken = $config->get('refresh_token');
-    $expiresAt = $config->get('token_expires_at');
+    $state = \Drupal::state();
+    $config = $this->configFactory->get('calendly_availability.settings');
+    $accessToken = $state->get('calendly_availability.personal_access_token');
+    $refreshToken = $state->get('calendly_availability.refresh_token');
+    $expiresAt = $state->get('calendly_availability.token_expires_at');
 
     if ((!$expiresAt || time() > ($expiresAt - 300)) && $refreshToken) {
       $this->logger->info('Calendly access token is expired or expiring soon. Attempting to refresh.');
@@ -45,11 +46,9 @@ trait CalendlyTokenTrait {
 
         $data = json_decode($response->getBody()->getContents(), TRUE);
         if (!empty($data['access_token'])) {
-          $config
-            ->set('personal_access_token', $data['access_token'])
-            ->set('refresh_token', $data['refresh_token'] ?? $refreshToken)
-            ->set('token_expires_at', time() + ($data['expires_in'] ?? 3600))
-            ->save();
+          $state->set('calendly_availability.personal_access_token', $data['access_token']);
+          $state->set('calendly_availability.refresh_token', $data['refresh_token'] ?? $refreshToken);
+          $state->set('calendly_availability.token_expires_at', time() + ($data['expires_in'] ?? 3600));
 
           $this->logger->info('Successfully refreshed Calendly access token.');
           return $data['access_token'];
@@ -57,7 +56,7 @@ trait CalendlyTokenTrait {
       }
       catch (RequestException $e) {
         $this->logger->error('Failed to refresh Calendly access token: @message', ['@message' => $e->getMessage()]);
-        // If we failed to refresh and the token is already expired, return NULL 
+        // If we failed to refresh and the token is already expired, return NULL
         // so the consumer knows we don't have a usable token.
         if ($expiresAt && time() > $expiresAt) {
           return NULL;

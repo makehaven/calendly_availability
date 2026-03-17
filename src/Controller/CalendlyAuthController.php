@@ -80,11 +80,10 @@ class CalendlyAuthController extends ControllerBase {
       $data = json_decode($response->getBody(), TRUE);
 
       if (!empty($data['access_token'])) {
-        $this->configFactory->getEditable('calendly_availability.settings')
-          ->set('personal_access_token', $data['access_token'])
-          ->set('refresh_token', $data['refresh_token'])
-          ->set('token_expires_at', time() + ($data['expires_in'] ?? 7200))
-          ->save();
+        $state = \Drupal::state();
+        $state->set('calendly_availability.personal_access_token', $data['access_token']);
+        $state->set('calendly_availability.refresh_token', $data['refresh_token']);
+        $state->set('calendly_availability.token_expires_at', time() + ($data['expires_in'] ?? 7200));
         $this->messenger()->addStatus($this->t('Successfully connected to Calendly API.'));
       }
       else {
@@ -103,8 +102,7 @@ class CalendlyAuthController extends ControllerBase {
    * Provides diagnostic information for Calendly API connectivity.
    */
   public function diagnostics() {
-    $config = $this->config('calendly_availability.settings');
-    $personal_access_token = trim($config->get('personal_access_token'));
+    $personal_access_token = trim((string) \Drupal::state()->get('calendly_availability.personal_access_token', ''));
     $messages = [];
 
     if (empty($personal_access_token)) {

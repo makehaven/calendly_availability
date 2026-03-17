@@ -175,10 +175,22 @@ class CalendlySettingsForm extends ConfigFormBase {
       ];
     }
     
+    $token = \Drupal::state()->get('calendly_availability.personal_access_token');
+    $expires_at = \Drupal::state()->get('calendly_availability.token_expires_at');
+    if (!empty($token) && $expires_at && time() < $expires_at) {
+      $expires_label = \Drupal::service('date.formatter')->format($expires_at, 'custom', 'Y-m-d H:i:s');
+      $token_status_markup = $this->t('Authorized. Token expires at @time.', ['@time' => $expires_label]);
+    }
+    elseif (!empty($token) && !$expires_at) {
+      $token_status_markup = $this->t('Authorized. Token is stored (no expiry recorded).');
+    }
+    else {
+      $token_status_markup = '<strong style="color:red">' . $this->t('Not Authorized. Re-authorize using the button above.') . '</strong>';
+    }
     $form['token_status'] = [
-        '#type' => 'item',
-        '#title' => $this->t('Current Authorization Status'),
-        '#markup' => !empty($config->get('personal_access_token')) ? $this->t('Authorized. Token is stored.') : $this->t('Not Authorized.'),
+      '#type' => 'item',
+      '#title' => $this->t('Current Authorization Status'),
+      '#markup' => $token_status_markup,
     ];
 
     return parent::buildForm($form, $form_state);
