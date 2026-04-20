@@ -152,6 +152,25 @@ class CalendlySettingsForm extends ConfigFormBase {
       '#description' => $this->t('Comma-separated keywords that identify orientation event types.'),
     ];
 
+    $form['alerts'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Failure alerts'),
+      '#open' => TRUE,
+      '#description' => $this->t('Where to send notifications when token refresh fails or the Calendly API errors. Alerts are rate-limited to once every 6 hours per failure type.'),
+    ];
+    $form['alerts']['alert_email'] = [
+      '#type' => 'email',
+      '#title' => $this->t('Alert email'),
+      '#default_value' => $config->get('alert_email') ?? 'staff@makehaven.org',
+      '#description' => $this->t('Leave blank to use the default (staff@makehaven.org).'),
+    ];
+    $form['alerts']['alert_slack_channel'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Alert Slack channel'),
+      '#default_value' => $config->get('alert_slack_channel') ?? '#tech',
+      '#description' => $this->t('Slack channel (with or without #) to post to via slack_connector. Leave blank to skip Slack alerts.'),
+    ];
+
     // --- Authorization Button ---
     $current_credentials = self::getCredentialsForCurrentHost(\Drupal::config('calendly_availability.settings'));
     if (!empty($current_credentials['client_id'])) {
@@ -218,6 +237,12 @@ class CalendlySettingsForm extends ConfigFormBase {
       ->set('stats_availability_window_days', max(1, (int) ($statsValues['stats_availability_window_days'] ?? 14)))
       ->set('stats_tour_keywords', $statsValues['stats_tour_keywords'] ?? 'tour')
       ->set('stats_orientation_keywords', $statsValues['stats_orientation_keywords'] ?? 'orientation,orient');
+
+    $alertValues = $form_state->getValue('alerts');
+    $config
+      ->set('alert_email', trim((string) ($alertValues['alert_email'] ?? '')))
+      ->set('alert_slack_channel', trim((string) ($alertValues['alert_slack_channel'] ?? '')));
+
     $config->save();
 
     parent::submitForm($form, $form_state);

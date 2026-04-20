@@ -429,10 +429,12 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
   }
 
   public function build() {
-    $token = $this->getValidAccessToken();
-    if (empty($token)) { return ['#markup' => $this->t('Calendly API is not configured or token is invalid. Please <a href="@link">configure settings</a>.', ['@link' => Url::fromRoute('calendly_availability.settings')->toString()])]; }
-
     $config = $this->getConfiguration();
+    $token = $this->getValidAccessToken();
+    if (empty($token)) {
+      return $this->renderFallbackOrAdminError($config, 'Calendly API is not configured or token is invalid.');
+    }
+
     try {
       $this->logger->debug('--- Starting Calendly Availability Fetch for block display ---');
       $selected_uris = $config['selected_event_type_uris'] ?? [];
@@ -519,8 +521,47 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       }
       return $build_array;
 
-    } catch (RequestException $e) { $this->logger->error('Guzzle Request Error in build: @message.', ['@message' => $e->getMessage()]); return ['#markup' => $this->t('API connection issue during build.'), '#cache' => ['max-age' => 60]]; }
-      catch (\Exception $e) { $this->logger->error('General Error in build: @message', ['@message' => $e->getMessage()]); return ['#markup' => $this->t('Unexpected error during build.'), '#cache' => ['max-age' => 60]]; }
+    }
+    catch (RequestException $e) {
+      $status = $e->hasResponse() ? $e->getResponse()->getStatusCode() : 0;
+      $this->logger->error('Guzzle Request Error in build (HTTP @code): @message.', [
+        '@code' => $status,
+        '@message' => $e->getMessage(),
+      ]);
+      \Drupal::state()->set('calendly_availability.last_api_error_time', time());
+      if (\Drupal::hasService('calendly_availability.alerts')) {
+        \Drupal::service('calendly_availability.alerts')->notifyApiFailure('block_build', sprintf('HTTP %d: %s', $status, $e->getMessage()));
+      }
+      return $this->renderFallbackOrAdminError($config, 'Calendly API connection issue.');
+    }
+    catch (\Exception $e) {
+      $this->logger->error('General Error in build: @message', ['@message' => $e->getMessage()]);
+      return $this->renderFallbackOrAdminError($config, 'Unexpected error during build.');
+    }
+  }
+
+  /**
+   * Renders the configured fallback link, or an admin-facing error as a
+   * last resort when no fallback URL is configured.
+   */
+  protected function renderFallbackOrAdminError(array $config, string $adminMessage): array {
+    $fallback_url = $config['fallback_url'] ?? '';
+    if (!empty($fallback_url)) {
+      return [
+        '#theme' => 'calendly_availability_fallback',
+        '#fallback_url' => $fallback_url,
+        '#message_for_fallback' => $this->t($config['no_results_message'] ?? 'Availability could not be loaded. Please use the booking link below.'),
+        '#fallback_link_text_config' => $this->t($config['fallback_link_text'] ?? 'Book a time'),
+        '#cache' => ['max-age' => 60],
+      ];
+    }
+    return [
+      '#markup' => $this->t('@msg Please <a href="@link">configure settings</a>.', [
+        '@msg' => $adminMessage,
+        '@link' => Url::fromRoute('calendly_availability.settings')->toString(),
+      ]),
+      '#cache' => ['max-age' => 60],
+    ];
   }
 
   /**

@@ -12,3 +12,12 @@ services:
       - '@datetime.time'
       - '@config.factory'
       - '@entity_type.manager'
+
+  calendly_availability.alerts:
+    class: Drupal\calendly_availability\Service\CalendlyAlertService
+    arguments:
+      - '@config.factory'
+      - '@state'
+      - '@plugin.manager.mail'
+      - '@http_client'
+      - '@logger.channel.calendly_availability'

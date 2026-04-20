@@ -57,6 +57,12 @@ calendly_availability.settings:
     stats_orientation_keywords:
       type: string
       label: 'Orientation keyword matches'
+    alert_email:
+      type: string
+      label: 'Alert email recipient'
+    alert_slack_channel:
+      type: string
+      label: 'Alert Slack channel'
 
 # This part defines the settings for each individual block instance.
 # It is preserved exactly from your original file.
