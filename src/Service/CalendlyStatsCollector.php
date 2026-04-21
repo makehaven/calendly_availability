@@ -101,6 +101,7 @@ class CalendlyStatsCollector implements CalendlyStatsCollectorInterface {
 
     $totals = [
       'events' => 0,
+      'unique_events' => 0,
       'tours' => 0,
       'orientations' => 0,
       'other' => 0,
@@ -120,6 +121,11 @@ class CalendlyStatsCollector implements CalendlyStatsCollectorInterface {
         continue;
       }
 
+      $inviteeCount = $this->extractInviteeCount($event);
+      if ($inviteeCount <= 0) {
+        continue;
+      }
+
       $start = $this->convertToSiteTimezone($event['start_time'] ?? NULL);
       $end = $this->convertToSiteTimezone($event['end_time'] ?? NULL);
       $durationMinutes = $this->calculateDurationMinutes($start, $end, $event['event_duration'] ?? NULL);
@@ -131,7 +137,7 @@ class CalendlyStatsCollector implements CalendlyStatsCollectorInterface {
       [$categoryKey, $categoryLabel, $canonical] = $this->classifyEvent($eventTypeUri, $eventTypeInfo, $categoryOverrides, $keywordMap);
 
       $categoryTotals[$categoryKey]['label'] = $categoryLabel;
-      $categoryTotals[$categoryKey]['count'] = ($categoryTotals[$categoryKey]['count'] ?? 0) + 1;
+      $categoryTotals[$categoryKey]['count'] = ($categoryTotals[$categoryKey]['count'] ?? 0) + $inviteeCount;
       $categoryTotals[$categoryKey]['canonical'] = $canonical;
       $categoryTotals[$categoryKey]['key'] = $categoryKey;
 
@@ -140,18 +146,19 @@ class CalendlyStatsCollector implements CalendlyStatsCollectorInterface {
         'orientation' => 'orientations',
         default => 'other',
       };
-      $totals[$totalsKey] = ($totals[$totalsKey] ?? 0) + 1;
-      $totals['events']++;
+      $totals[$totalsKey] = ($totals[$totalsKey] ?? 0) + $inviteeCount;
+      $totals['events'] += $inviteeCount;
+      $totals['unique_events']++;
 
       if ($eventHour !== NULL) {
-        $hourly[$eventHour]++;
+        $hourly[$eventHour] += $inviteeCount;
         $weekdayKey = $start->format('D');
         if (!isset($weekday[$weekdayKey])) {
           $weekday[$weekdayKey] = 0;
         }
-        $weekday[$weekdayKey]++;
+        $weekday[$weekdayKey] += $inviteeCount;
         $bucketKey = $this->bucketHour($eventHour);
-        $buckets[$bucketKey]++;
+        $buckets[$bucketKey] += $inviteeCount;
       }
 
       if (isset($eventTypeCatalog[$eventTypeUri])) {
@@ -168,7 +175,7 @@ class CalendlyStatsCollector implements CalendlyStatsCollectorInterface {
       }
       $eventTypeStats[$eventTypeUri]['category'] = $categoryLabel;
       $eventTypeStats[$eventTypeUri]['name'] = $eventTypeInfo['name'] ?? $eventName;
-      $eventTypeStats[$eventTypeUri]['count']++;
+      $eventTypeStats[$eventTypeUri]['count'] += $inviteeCount;
 
       $staffInfo = $this->extractStaffFromEvent($event, $eventTypeInfo);
       $staffKey = $staffInfo['key'];
@@ -190,10 +197,10 @@ class CalendlyStatsCollector implements CalendlyStatsCollectorInterface {
         default => 'other',
       };
 
-      $staff[$staffKey]['events'][$fieldKey]++;
-      $staff[$staffKey]['total']++;
+      $staff[$staffKey]['events'][$fieldKey] += $inviteeCount;
+      $staff[$staffKey]['total'] += $inviteeCount;
       if ($eventHour !== NULL) {
-        $staff[$staffKey]['hourly'][$eventHour]++;
+        $staff[$staffKey]['hourly'][$eventHour] += $inviteeCount;
       }
     }
 
@@ -496,6 +503,22 @@ class CalendlyStatsCollector implements CalendlyStatsCollectorInterface {
   }
 
   /**
+   * Returns the number of attending invitees on a scheduled event.
+   *
+   * Group events can have many invitees per slot; we count people served
+   * rather than unique slots so the dashboard matches Calendly's invitee
+   * export. Falls back to 1 when the counter is missing so 1:1 meetings
+   * (which sometimes omit the counter) still register.
+   */
+  protected function extractInviteeCount(array $event): int {
+    $counter = $event['invitees_counter'] ?? NULL;
+    if (is_array($counter) && isset($counter['active']) && is_numeric($counter['active'])) {
+      return max(0, (int) $counter['active']);
+    }
+    return 1;
+  }
+
+  /**
    * Derives the staff owner from an event.
    */
   protected function extractStaffFromEvent(array $event, array $eventTypeInfo): array {
@@ -764,12 +787,20 @@ class CalendlyStatsCollector implements CalendlyStatsCollectorInterface {
     $categories = [];
 
     foreach ($events as $event) {
+      if (strtolower($event['status'] ?? '') === 'canceled') {
+        continue;
+      }
+      $inviteeCount = $this->extractInviteeCount($event);
+      if ($inviteeCount <= 0) {
+        continue;
+      }
+
       $eventTypeUri = $event['event_type'] ?? '';
       $eventTypeInfo = $eventTypeCatalog[$eventTypeUri] ?? [];
       [$categoryKey, $categoryLabel, $canonical] = $this->classifyEvent($eventTypeUri, $eventTypeInfo, $categoryOverrides, $keywordMap);
 
       $categories[$categoryKey]['label'] = $categoryLabel;
-      $categories[$categoryKey]['count'] = ($categories[$categoryKey]['count'] ?? 0) + 1;
+      $categories[$categoryKey]['count'] = ($categories[$categoryKey]['count'] ?? 0) + $inviteeCount;
       $categories[$categoryKey]['canonical'] = $canonical;
       $categories[$categoryKey]['key'] = $categoryKey;
 
@@ -778,8 +809,8 @@ class CalendlyStatsCollector implements CalendlyStatsCollectorInterface {
         'orientation' => 'orientations',
         default => 'other',
       };
-      $totals[$totalsKey] = ($totals[$totalsKey] ?? 0) + 1;
-      $totals['events']++;
+      $totals[$totalsKey] = ($totals[$totalsKey] ?? 0) + $inviteeCount;
+      $totals['events'] += $inviteeCount;
     }
 
     $categoriesList = array_values($categories);

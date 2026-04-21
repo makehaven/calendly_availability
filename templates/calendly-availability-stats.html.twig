@@ -25,6 +25,9 @@
   </div>
   <div class="calendly-stats__range-help">
     {{ 'Tip: the default view is a rolling 30-day window. Use the preset links to jump to full months or quarters and compare against the previous period.'|t }}
+    {% if totals.unique_events is defined %}
+      {{ 'Counts reflect individual attendees (invitees) across @slots unique scheduled slots, matching Calendly\'s events export.'|t({'@slots': totals.unique_events}) }}
+    {% endif %}
   </div>
 
   <div class="calendly-stats__summary">
@@ -71,9 +74,9 @@
       </div>
     {% endif %}
     <div class="calendly-card">
-      <div class="calendly-card__label">{{ 'Avg. daily events'|t }}</div>
+      <div class="calendly-card__label">{{ 'Avg. daily attendees'|t }}</div>
       <div class="calendly-card__value">{{ totals.avg_daily_events|default(0) }}</div>
-      <div class="calendly-card__foot">{{ 'Rolling window'|t }}</div>
+      <div class="calendly-card__foot">{{ 'Invitees per day'|t }}</div>
       {% if comparison.totals is defined and comparison.period is defined %}
         {% set comparison_avg = comparison.period.days ? (comparison.totals.events|default(0) / comparison.period.days)|number_format(2) : '0' %}
         <div class="calendly-card__delta">{{ 'Prev avg: @val'|t({'@val': comparison_avg}) }}</div>
