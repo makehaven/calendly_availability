@@ -5,11 +5,9 @@
  * Contains calendly_availability.module.
  */
 
-use Drupal\calendly_availability\Form\CalendlySettingsForm;
 use Drupal\Core\Datetime\DrupalDateTime;
 use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\Core\Url;
-use GuzzleHttp\Exception\RequestException;
 
 /**
  * Implements hook_requirements().
@@ -27,6 +25,7 @@ function calendly_availability_requirements($phase) {
   $last_refresh_error = $state->get('calendly_availability.last_refresh_error_time');
   $last_refresh_message = $state->get('calendly_availability.last_refresh_error_message');
   $last_api_error = $state->get('calendly_availability.last_api_error_time');
+  $cooldown_until = (int) $state->get('calendly_availability.refresh_cooldown_until', 0);
   $settings_url = Url::fromRoute('calendly_availability.settings')->toString();
 
   if (empty($token)) {
@@ -74,6 +73,20 @@ function calendly_availability_requirements($phase) {
     ];
   }
 
+  // Show cooldown so admins understand why the module is temporarily
+  // not retrying refresh (Calendly returned 400/401 recently).
+  if ($cooldown_until && time() < $cooldown_until) {
+    $requirements['calendly_availability_refresh_cooldown'] = [
+      'title' => t('Calendly Token Refresh'),
+      'value' => t('In cooldown after refresh failure'),
+      'description' => t('The Calendly integration paused refresh attempts after a recent 400/401 response. It will retry automatically at @when. If the tour/orientation widgets are broken, <a href=":url">re-authorize</a>.', [
+        '@when' => \Drupal::service('date.formatter')->format($cooldown_until, 'custom', 'Y-m-d H:i:s'),
+        ':url' => $settings_url,
+      ]),
+      'severity' => REQUIREMENT_WARNING,
+    ];
+  }
+
   if ($last_api_error && (time() - $last_api_error) < 86400) {
     $requirements['calendly_availability_recent_api_error'] = [
       'title' => t('Calendly API'),
@@ -92,87 +105,13 @@ function calendly_availability_requirements($phase) {
  * Implements hook_cron().
  *
  * Proactively refreshes the Calendly OAuth token when it is within 24 hours
- * of expiry, so we don't rely on a page visit to trigger refresh. Rate-limited
- * to once per hour to avoid thrashing on every cron run.
+ * of expiry, so we don't rely on a page visit to trigger refresh. The
+ * token manager serializes this with on-demand refreshes from page
+ * requests so the two can't race and invalidate each other's refresh
+ * token via Calendly's rotation behavior.
  */
 function calendly_availability_cron() {
-  $state = \Drupal::state();
-  $last_attempt = $state->get('calendly_availability.cron_last_attempt', 0);
-  if ($last_attempt && (time() - $last_attempt) < 3600) {
-    return;
-  }
-
-  $refresh_token = $state->get('calendly_availability.refresh_token');
-  $expires_at = $state->get('calendly_availability.token_expires_at');
-  if (empty($refresh_token) || empty($expires_at)) {
-    return;
-  }
-
-  if (time() < ($expires_at - 86400)) {
-    return;
-  }
-
-  $state->set('calendly_availability.cron_last_attempt', time());
-
-  $config = \Drupal::config('calendly_availability.settings');
-  $credentials = CalendlySettingsForm::getCredentialsForCurrentHost($config);
-  $client_id = $credentials['client_id'] ?? '';
-  $client_secret = $credentials['client_secret'] ?? '';
-  $logger = \Drupal::logger('calendly_availability');
-
-  if (empty($client_id) || empty($client_secret)) {
-    $logger->warning('Cron refresh skipped: no OAuth client credentials for current host.');
-    return;
-  }
-
-  try {
-    $response = \Drupal::httpClient()->post('https://auth.calendly.com/oauth/token', [
-      'form_params' => [
-        'grant_type' => 'refresh_token',
-        'refresh_token' => $refresh_token,
-        'client_id' => $client_id,
-        'client_secret' => $client_secret,
-      ],
-    ]);
-    $data = json_decode($response->getBody()->getContents(), TRUE);
-    if (!empty($data['access_token'])) {
-      $state->set('calendly_availability.personal_access_token', $data['access_token']);
-      $state->set('calendly_availability.refresh_token', $data['refresh_token'] ?? $refresh_token);
-      $state->set('calendly_availability.token_expires_at', time() + ($data['expires_in'] ?? 3600));
-      $state->delete('calendly_availability.last_refresh_error_time');
-      $state->delete('calendly_availability.last_refresh_error_message');
-      $logger->info('Cron proactively refreshed Calendly access token.');
-    }
-    else {
-      _calendly_availability_record_cron_failure('empty_response', 'Refresh response lacked access_token.');
-    }
-  }
-  catch (RequestException $e) {
-    $status = $e->hasResponse() ? $e->getResponse()->getStatusCode() : 0;
-    $body = $e->hasResponse() ? (string) $e->getResponse()->getBody() : '';
-    $logger->error('Cron Calendly refresh failed (HTTP @code): @msg', ['@code' => $status, '@msg' => $e->getMessage()]);
-    if (in_array($status, [400, 401], TRUE)) {
-      $state->delete('calendly_availability.personal_access_token');
-      $state->delete('calendly_availability.refresh_token');
-      $state->delete('calendly_availability.token_expires_at');
-      _calendly_availability_record_cron_failure('auth_revoked', sprintf('HTTP %d; tokens cleared. Body: %s', $status, $body));
-    }
-    else {
-      _calendly_availability_record_cron_failure('http_error', sprintf('HTTP %d: %s', $status, $e->getMessage()));
-    }
-  }
-}
-
-/**
- * Helper: records a cron refresh failure and fires an alert.
- */
-function _calendly_availability_record_cron_failure(string $reason, string $message): void {
-  $state = \Drupal::state();
-  $state->set('calendly_availability.last_refresh_error_time', time());
-  $state->set('calendly_availability.last_refresh_error_message', $reason . ': ' . $message);
-  if (\Drupal::hasService('calendly_availability.alerts')) {
-    \Drupal::service('calendly_availability.alerts')->notifyRefreshFailure($reason, $message);
-  }
+  \Drupal::service('calendly_availability.token_manager')->refreshIfNeeded();
 }
 
 /**

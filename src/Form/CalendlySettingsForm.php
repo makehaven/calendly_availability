@@ -194,10 +194,15 @@ class CalendlySettingsForm extends ConfigFormBase {
       ];
     }
     
-    $token = \Drupal::state()->get('calendly_availability.personal_access_token');
-    $expires_at = \Drupal::state()->get('calendly_availability.token_expires_at');
+    $state = \Drupal::state();
+    $token = $state->get('calendly_availability.personal_access_token');
+    $expires_at = $state->get('calendly_availability.token_expires_at');
+    $authorized_env = $state->get('calendly_availability.authorized_environment');
+    $cooldown_until = (int) $state->get('calendly_availability.refresh_cooldown_until', 0);
+    $date_formatter = \Drupal::service('date.formatter');
+
     if (!empty($token) && $expires_at && time() < $expires_at) {
-      $expires_label = \Drupal::service('date.formatter')->format($expires_at, 'custom', 'Y-m-d H:i:s');
+      $expires_label = $date_formatter->format($expires_at, 'custom', 'Y-m-d H:i:s');
       $token_status_markup = $this->t('Authorized. Token expires at @time.', ['@time' => $expires_label]);
     }
     elseif (!empty($token) && !$expires_at) {
@@ -206,6 +211,16 @@ class CalendlySettingsForm extends ConfigFormBase {
     else {
       $token_status_markup = '<strong style="color:red">' . $this->t('Not Authorized. Re-authorize using the button above.') . '</strong>';
     }
+
+    if (!empty($authorized_env)) {
+      $token_status_markup .= '<br>' . $this->t('Authorized environment: <strong>@env</strong> (used for background refresh).', ['@env' => $authorized_env]);
+    }
+    if ($cooldown_until && time() < $cooldown_until) {
+      $token_status_markup .= '<br><strong style="color:#b94a00">' . $this->t('Refresh paused (cooldown) until @when after a recent 400/401 from Calendly. Re-authorize to clear.', [
+        '@when' => $date_formatter->format($cooldown_until, 'custom', 'Y-m-d H:i:s'),
+      ]) . '</strong>';
+    }
+
     $form['token_status'] = [
       '#type' => 'item',
       '#title' => $this->t('Current Authorization Status'),
@@ -249,37 +264,30 @@ class CalendlySettingsForm extends ConfigFormBase {
   }
 
   /**
+   * Supported environment keys, in preference order.
+   */
+  const ENVIRONMENTS = ['production', 'testing', 'development'];
+
+  /**
    * Helper to get credentials for the current host.
+   *
+   * Used during the interactive OAuth Authorize flow, where a real HTTP
+   * request with a trustworthy host is available. For background refresh
+   * (cron, queue, CLI) use getRefreshCredentials() instead — it anchors
+   * on the environment the admin last authorized against rather than
+   * whatever host the current process happens to see.
    */
   public static function getCredentialsForCurrentHost(Config $config) {
-    $current_host = \Drupal::request()->getSchemeAndHttpHost();
-    $environments = ['production', 'testing', 'development'];
-
-    // Try to find an exact match for the current host.
-    foreach ($environments as $env) {
-      $base_url = $config->get($env . '_base_url');
-      if (!empty($base_url) && strcasecmp($base_url, $current_host) == 0) {
-        return [
-          'client_id' => $config->get($env . '_client_id'),
-          'client_secret' => $config->get($env . '_client_secret'),
-        ];
-      }
-    }
-
-    // Fallback 1: Try to find ANY environment that has credentials.
-    // This is helpful for local dev/Lando where URLs may not be exactly matched.
-    foreach ($environments as $env) {
+    $env = self::resolveEnvironmentForCurrentHost($config);
+    if ($env !== NULL) {
       $client_id = $config->get($env . '_client_id');
       $client_secret = $config->get($env . '_client_secret');
       if (!empty($client_id) && !empty($client_secret)) {
-        return [
-          'client_id' => $client_id,
-          'client_secret' => $client_secret,
-        ];
+        return ['client_id' => $client_id, 'client_secret' => $client_secret];
       }
     }
 
-    // Fallback 2: Check for legacy top-level credentials.
+    // Legacy top-level credentials.
     if ($config->get('client_id') && $config->get('client_secret')) {
       return [
         'client_id' => $config->get('client_id'),
@@ -289,4 +297,71 @@ class CalendlySettingsForm extends ConfigFormBase {
 
     return [];
   }
+
+  /**
+   * Resolves which environment config applies to the current HTTP host.
+   *
+   * Returns the env key ('production', 'testing', 'development') or NULL
+   * when the current host matches no configured base_url and no fallback
+   * is safe. The "any env with credentials" fallback is permitted only
+   * when the current host clearly looks like local dev (lando.site,
+   * localhost, 127.0.0.1) — sending a production refresh token to a
+   * development OAuth app's endpoint used to be how this integration
+   * got silently killed.
+   */
+  public static function resolveEnvironmentForCurrentHost(Config $config): ?string {
+    $current_host = \Drupal::request()->getSchemeAndHttpHost();
+
+    foreach (self::ENVIRONMENTS as $env) {
+      $base_url = $config->get($env . '_base_url');
+      if (!empty($base_url) && strcasecmp($base_url, $current_host) == 0) {
+        return $env;
+      }
+    }
+
+    if (self::isLocalDevHost($current_host)) {
+      foreach (self::ENVIRONMENTS as $env) {
+        if (!empty($config->get($env . '_client_id')) && !empty($config->get($env . '_client_secret'))) {
+          return $env;
+        }
+      }
+    }
+
+    return NULL;
+  }
+
+  /**
+   * Credentials for background refresh.
+   *
+   * Prefers the environment key stored at authorize time
+   * (`calendly_availability.authorized_environment` state). Cron and
+   * other non-HTTP contexts can't trust getSchemeAndHttpHost(), so
+   * anchoring on the authorize-time env prevents signing a refresh with
+   * the wrong OAuth app — which would trigger HTTP 400 and (before this
+   * fix) wipe the stored tokens.
+   */
+  public static function getRefreshCredentials(Config $config): array {
+    $env = \Drupal::state()->get('calendly_availability.authorized_environment');
+    if ($env && in_array($env, self::ENVIRONMENTS, TRUE)) {
+      $client_id = $config->get($env . '_client_id');
+      $client_secret = $config->get($env . '_client_secret');
+      if (!empty($client_id) && !empty($client_secret)) {
+        return ['client_id' => $client_id, 'client_secret' => $client_secret];
+      }
+    }
+    return self::getCredentialsForCurrentHost($config);
+  }
+
+  /**
+   * Tells whether a URL looks like a local dev environment.
+   */
+  protected static function isLocalDevHost(string $host): bool {
+    $lower = strtolower($host);
+    return str_contains($lower, 'lndo.site')
+      || str_contains($lower, 'localhost')
+      || str_contains($lower, '127.0.0.1')
+      || str_contains($lower, '.test')
+      || str_contains($lower, '.local');
+  }
+
 }

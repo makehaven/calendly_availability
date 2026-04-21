@@ -21,3 +21,13 @@ services:
       - '@plugin.manager.mail'
       - '@http_client'
       - '@logger.channel.calendly_availability'
+
+  calendly_availability.token_manager:
+    class: Drupal\calendly_availability\Service\CalendlyTokenManager
+    arguments:
+      - '@config.factory'
+      - '@state'
+      - '@lock'
+      - '@http_client'
+      - '@logger.channel.calendly_availability'
+      - '@calendly_availability.alerts'

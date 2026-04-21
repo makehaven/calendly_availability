@@ -84,6 +84,18 @@ class CalendlyAuthController extends ControllerBase {
         $state->set('calendly_availability.personal_access_token', $data['access_token']);
         $state->set('calendly_availability.refresh_token', $data['refresh_token']);
         $state->set('calendly_availability.token_expires_at', time() + ($data['expires_in'] ?? 7200));
+        // Remember which env's OAuth app we just authorized against so
+        // background refresh (cron) uses the same client_id/secret even
+        // when it has no reliable HTTP host to match on.
+        $env = CalendlySettingsForm::resolveEnvironmentForCurrentHost($config);
+        if ($env !== NULL) {
+          $state->set('calendly_availability.authorized_environment', $env);
+        }
+        // A fresh authorization clears any cooldown/error state left by
+        // previous failures.
+        $state->delete('calendly_availability.refresh_cooldown_until');
+        $state->delete('calendly_availability.last_refresh_error_time');
+        $state->delete('calendly_availability.last_refresh_error_message');
         $this->messenger()->addStatus($this->t('Successfully connected to Calendly API.'));
       }
       else {
