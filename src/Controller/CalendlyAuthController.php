@@ -96,6 +96,7 @@ class CalendlyAuthController extends ControllerBase {
         $state->delete('calendly_availability.refresh_cooldown_until');
         $state->delete('calendly_availability.last_refresh_error_time');
         $state->delete('calendly_availability.last_refresh_error_message');
+        $state->delete('calendly_availability.consecutive_refresh_failures');
         $this->messenger()->addStatus($this->t('Successfully connected to Calendly API.'));
       }
       else {

@@ -26,15 +26,37 @@ class CalendlyAlertService {
   ) {}
 
   /**
-   * Notifies when the OAuth refresh flow fails.
+   * Notifies when the OAuth refresh flow fails persistently.
+   *
+   * Callers should only invoke this after consecutive failures — a single
+   * invalid_grant is often a transient rotation race and the existing
+   * access token keeps widgets online until the next retry succeeds.
    */
-  public function notifyRefreshFailure(string $reason, string $message): void {
-    $subject = 'Calendly token refresh failed';
+  public function notifyRefreshFailure(string $reason, string $message, int $consecutiveFailures = 1, int $tokenExpiresAt = 0): void {
+    $subject = 'Calendly token refresh failing repeatedly';
+
+    $tokenStatus = 'Token expiry unknown.';
+    if ($tokenExpiresAt > 0) {
+      $remaining = $tokenExpiresAt - time();
+      if ($remaining > 0) {
+        $tokenStatus = sprintf(
+          'Current access token is still valid for about %d minutes (until %s UTC); widgets remain online until then.',
+          (int) ($remaining / 60),
+          gmdate('Y-m-d H:i', $tokenExpiresAt)
+        );
+      }
+      else {
+        $tokenStatus = sprintf('Current access token expired %s UTC; widgets have fallen back to a plain Calendly embed.', gmdate('Y-m-d H:i', $tokenExpiresAt));
+      }
+    }
+
     $body = sprintf(
-      "The Calendly OAuth token refresh failed on %s.\n\nReason: %s\nDetails: %s\n\nImpact: tour and orientation booking pages will fall back to a plain Calendly embed. New members still see a booking option, but internal availability widgets are offline until an admin re-authorizes at /admin/config/services/calendly-availability.",
+      "Calendly OAuth refresh has failed %d consecutive times on %s.\n\nReason: %s\nDetails: %s\n\n%s\n\nThe system retries automatically after a 15-minute cooldown. Because this failure has repeated past the cooldown, a human likely needs to re-authorize at /admin/config/services/calendly-availability.",
+      $consecutiveFailures,
       \Drupal::request()->getSchemeAndHttpHost(),
       $reason,
-      $message
+      $message,
+      $tokenStatus
     );
     $this->send('refresh_failure', $subject, $body);
   }

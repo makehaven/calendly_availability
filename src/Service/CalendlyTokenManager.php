@@ -185,6 +185,7 @@ class CalendlyTokenManager {
         $this->state->delete('calendly_availability.last_refresh_error_time');
         $this->state->delete('calendly_availability.last_refresh_error_message');
         $this->state->delete('calendly_availability.refresh_cooldown_until');
+        $this->state->delete('calendly_availability.consecutive_refresh_failures');
         $this->logger->info('Successfully refreshed Calendly access token.');
         return $data['access_token'];
       }
@@ -226,11 +227,32 @@ class CalendlyTokenManager {
 
   /**
    * Records a refresh failure and triggers an alert (rate-limited).
+   *
+   * A single invalid_grant is often a transient rotation race and the
+   * existing access token usually keeps widgets online until the next
+   * refresh attempt succeeds. To avoid waking staff up for self-healing
+   * blips, we only alert once we've seen consecutive failures — a second
+   * failure after the cooldown indicates the issue is persistent and a
+   * human probably needs to re-authorize.
    */
   protected function recordRefreshFailure(string $reason, string $message): void {
     $this->state->set('calendly_availability.last_refresh_error_time', time());
     $this->state->set('calendly_availability.last_refresh_error_message', $reason . ': ' . $message);
-    $this->alerts->notifyRefreshFailure($reason, $message);
+
+    $consecutive = ((int) $this->state->get('calendly_availability.consecutive_refresh_failures', 0)) + 1;
+    $this->state->set('calendly_availability.consecutive_refresh_failures', $consecutive);
+
+    if ($consecutive < 2) {
+      $this->logger->info('Calendly refresh failed (attempt @n, suppressing alert): @reason — @message', [
+        '@n' => $consecutive,
+        '@reason' => $reason,
+        '@message' => $message,
+      ]);
+      return;
+    }
+
+    $expiresAt = (int) $this->state->get('calendly_availability.token_expires_at', 0);
+    $this->alerts->notifyRefreshFailure($reason, $message, $consecutive, $expiresAt);
   }
 
 }
