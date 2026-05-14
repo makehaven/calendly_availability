@@ -13,6 +13,9 @@ calendly_availability.settings:
     production_client_secret:
       type: string
       label: 'Production Client Secret'
+    production_personal_access_token:
+      type: string
+      label: 'Production Personal Access Token'
     testing_base_url:
       type: string
       label: 'Testing Base URL'
@@ -22,6 +25,9 @@ calendly_availability.settings:
     testing_client_secret:
       type: string
       label: 'Testing Client Secret'
+    testing_personal_access_token:
+      type: string
+      label: 'Testing Personal Access Token'
     development_base_url:
       type: string
       label: 'Development Base URL'
@@ -31,6 +37,9 @@ calendly_availability.settings:
     development_client_secret:
       type: string
       label: 'Development Client Secret'
+    development_personal_access_token:
+      type: string
+      label: 'Development Personal Access Token'
     # Global settings from your version
     webhook_signing_key:
       type: text

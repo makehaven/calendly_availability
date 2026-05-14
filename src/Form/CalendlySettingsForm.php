@@ -66,6 +66,12 @@ class CalendlySettingsForm extends ConfigFormBase {
       '#title' => $this->t('Client Secret'),
       '#default_value' => $config->get('production_client_secret'),
     ];
+    $form['production']['personal_access_token'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Personal Access Token (PAT)'),
+      '#default_value' => $config->get('production_personal_access_token'),
+      '#description' => $this->t('Optional. If set, this PAT is used directly for all API calls in this environment and OAuth refresh is skipped. Generate one in Calendly under Integrations → API & Webhooks. Recommended for long-lived environments to avoid refresh-token rotation breakage.'),
+    ];
 
     // --- Testing Environment Settings ---
     $form['testing'] = [
@@ -87,6 +93,12 @@ class CalendlySettingsForm extends ConfigFormBase {
       '#type' => 'textfield',
       '#title' => $this->t('Client Secret'),
       '#default_value' => $config->get('testing_client_secret'),
+    ];
+    $form['testing']['personal_access_token'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Personal Access Token (PAT)'),
+      '#default_value' => $config->get('testing_personal_access_token'),
+      '#description' => $this->t('Optional. If set, OAuth refresh is skipped for this environment.'),
     ];
 
     // --- Development Environment Settings ---
@@ -110,7 +122,13 @@ class CalendlySettingsForm extends ConfigFormBase {
       '#title' => $this->t('Client Secret'),
       '#default_value' => $config->get('development_client_secret'),
     ];
-    
+    $form['development']['personal_access_token'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Personal Access Token (PAT)'),
+      '#default_value' => $config->get('development_personal_access_token'),
+      '#description' => $this->t('Optional. If set, OAuth refresh is skipped for this environment. Setting a separate dev PAT prevents pull-db from making local cron invalidate prod\'s refresh token.'),
+    ];
+
     // Webhook Signing Key (Optional) - Global
     $form['webhook_signing_key'] = [
       '#type' => 'textfield',
@@ -200,8 +218,12 @@ class CalendlySettingsForm extends ConfigFormBase {
     $authorized_env = $state->get('calendly_availability.authorized_environment');
     $cooldown_until = (int) $state->get('calendly_availability.refresh_cooldown_until', 0);
     $date_formatter = \Drupal::service('date.formatter');
+    $current_host_pat = self::getPatForCurrentHost(\Drupal::config('calendly_availability.settings'));
 
-    if (!empty($token) && $expires_at && time() < $expires_at) {
+    if (!empty($current_host_pat)) {
+      $token_status_markup = '<strong style="color:#1a7f3a">' . $this->t('Authenticated via Personal Access Token for this environment. OAuth refresh is skipped — no re-authorization required.') . '</strong>';
+    }
+    elseif (!empty($token) && $expires_at && time() < $expires_at) {
       $expires_label = $date_formatter->format($expires_at, 'custom', 'Y-m-d H:i:s');
       $token_status_markup = $this->t('Authorized. Token expires at @time.', ['@time' => $expires_label]);
     }
@@ -215,7 +237,7 @@ class CalendlySettingsForm extends ConfigFormBase {
     if (!empty($authorized_env)) {
       $token_status_markup .= '<br>' . $this->t('Authorized environment: <strong>@env</strong> (used for background refresh).', ['@env' => $authorized_env]);
     }
-    if ($cooldown_until && time() < $cooldown_until) {
+    if (empty($current_host_pat) && $cooldown_until && time() < $cooldown_until) {
       $token_status_markup .= '<br><strong style="color:#b94a00">' . $this->t('Refresh paused (cooldown) until @when after a recent 400/401 from Calendly. Re-authorize to clear.', [
         '@when' => $date_formatter->format($cooldown_until, 'custom', 'Y-m-d H:i:s'),
       ]) . '</strong>';
@@ -242,6 +264,7 @@ class CalendlySettingsForm extends ConfigFormBase {
       $config->set($env . '_base_url', rtrim($values['base_url'], '/'));
       $config->set($env . '_client_id', $values['client_id']);
       $config->set($env . '_client_secret', $values['client_secret']);
+      $config->set($env . '_personal_access_token', trim((string) ($values['personal_access_token'] ?? '')));
     }
 
     $config->set('webhook_signing_key', $form_state->getValue('webhook_signing_key'));
@@ -350,6 +373,42 @@ class CalendlySettingsForm extends ConfigFormBase {
       }
     }
     return self::getCredentialsForCurrentHost($config);
+  }
+
+  /**
+   * PAT for the authorized environment, or NULL.
+   *
+   * Anchored on `calendly_availability.authorized_environment` state for
+   * the same reason as getRefreshCredentials(): cron/CLI can't trust
+   * getSchemeAndHttpHost(). When this returns a non-empty string the
+   * token manager uses it directly and skips OAuth refresh entirely.
+   */
+  public static function getPatForRefreshEnvironment(Config $config): ?string {
+    $env = \Drupal::state()->get('calendly_availability.authorized_environment');
+    if ($env && in_array($env, self::ENVIRONMENTS, TRUE)) {
+      $pat = trim((string) $config->get($env . '_personal_access_token'));
+      if ($pat !== '') {
+        return $pat;
+      }
+    }
+    return NULL;
+  }
+
+  /**
+   * PAT configured for the host the current HTTP request is on, or NULL.
+   *
+   * Used by the settings form to render the status panel for the
+   * environment the admin is actually looking at.
+   */
+  public static function getPatForCurrentHost(Config $config): ?string {
+    $env = self::resolveEnvironmentForCurrentHost($config);
+    if ($env !== NULL) {
+      $pat = trim((string) $config->get($env . '_personal_access_token'));
+      if ($pat !== '') {
+        return $pat;
+      }
+    }
+    return NULL;
   }
 
   /**

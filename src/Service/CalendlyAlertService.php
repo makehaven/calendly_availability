@@ -62,6 +62,63 @@ class CalendlyAlertService {
   }
 
   /**
+   * Daily heartbeat while OAuth refresh remains broken.
+   *
+   * Sidesteps the 6h suppression that notifyRefreshFailure() uses, because
+   * a multi-hour outage that started during the existing alert's quiet
+   * window can otherwise go unnoticed (see 2026-05-04 incident: first
+   * alert fired at 01:35 UTC, integration was broken until ~05:23 UTC,
+   * no further alerts in that window).
+   *
+   * Uses its own state key + 24h cadence so the existing per-failure
+   * alert counter is unaffected.
+   */
+  public function notifyPersistentFailure(string $reason, string $message, int $consecutiveFailures, int $tokenExpiresAt = 0): void {
+    $stateKey = 'calendly_availability.alert_last.persistent_failure';
+    $last = (int) $this->state->get($stateKey, 0);
+    if ($last && (time() - $last) < 86400) {
+      return;
+    }
+    $this->state->set($stateKey, time());
+
+    $tokenStatus = 'Token expiry unknown.';
+    if ($tokenExpiresAt > 0) {
+      $remaining = $tokenExpiresAt - time();
+      $tokenStatus = $remaining > 0
+        ? sprintf('Access token still valid for ~%d minutes (until %s UTC).', (int) ($remaining / 60), gmdate('Y-m-d H:i', $tokenExpiresAt))
+        : sprintf('Access token expired %s UTC; widgets are on the fallback embed.', gmdate('Y-m-d H:i', $tokenExpiresAt));
+    }
+
+    $subject = 'Calendly OAuth refresh still broken — manual re-authorization needed';
+    $body = sprintf(
+      "Calendly OAuth refresh has been failing for over 24 hours on %s.\n\nConsecutive failures: %d\nLast reason: %s\nLast details: %s\n\n%s\n\nA human needs to re-authorize at /admin/config/services/calendly-availability — or set a Personal Access Token on that page to bypass OAuth entirely.",
+      \Drupal::request()->getSchemeAndHttpHost(),
+      $consecutiveFailures,
+      $reason,
+      $message,
+      $tokenStatus
+    );
+
+    $config = $this->configFactory->get('calendly_availability.settings');
+    $email = trim((string) $config->get('alert_email')) ?: self::DEFAULT_EMAIL;
+    try {
+      $this->mailManager->mail(
+        'calendly_availability',
+        'alert',
+        $email,
+        \Drupal::languageManager()->getDefaultLanguage()->getId(),
+        ['subject' => $subject, 'body' => $body],
+        NULL,
+        TRUE,
+      );
+    }
+    catch (\Throwable $e) {
+      $this->logger->error('Failed to send Calendly persistent-failure alert: @msg', ['@msg' => $e->getMessage()]);
+    }
+    $this->sendSlack($subject, $body);
+  }
+
+  /**
    * Notifies when a live API call fails with the API returning an error.
    */
   public function notifyApiFailure(string $context, string $message): void {

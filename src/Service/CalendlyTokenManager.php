@@ -50,6 +50,19 @@ class CalendlyTokenManager {
    * fallback UI rather than attempting API calls that will 401.
    */
   public function getValidAccessToken(): ?string {
+    // PAT short-circuit: if a Personal Access Token is configured for the
+    // authorized environment, use it directly. PATs don't expire or rotate,
+    // so we never touch state, never acquire the refresh lock, never call
+    // Calendly's token endpoint. Removes the entire OAuth failure class
+    // (rotation race, invalid_grant, 120-day inactivity revoke) for envs
+    // that opt in.
+    $pat = CalendlySettingsForm::getPatForRefreshEnvironment(
+      $this->configFactory->get('calendly_availability.settings')
+    );
+    if ($pat !== NULL) {
+      return $pat;
+    }
+
     $accessToken = $this->state->get('calendly_availability.personal_access_token');
     $refreshToken = $this->state->get('calendly_availability.refresh_token');
     $expiresAt = $this->state->get('calendly_availability.token_expires_at');
@@ -79,6 +92,14 @@ class CalendlyTokenManager {
    * Rate-limited to at most one attempt per hour to avoid cron thrash.
    */
   public function refreshIfNeeded(): void {
+    // No refresh work when a PAT is in play — it never expires.
+    $pat = CalendlySettingsForm::getPatForRefreshEnvironment(
+      $this->configFactory->get('calendly_availability.settings')
+    );
+    if ($pat !== NULL) {
+      return;
+    }
+
     $lastAttempt = (int) $this->state->get('calendly_availability.cron_last_attempt', 0);
     if ($lastAttempt && (time() - $lastAttempt) < 3600) {
       return;

@@ -5,6 +5,7 @@
  * Contains calendly_availability.module.
  */
 
+use Drupal\calendly_availability\Form\CalendlySettingsForm;
 use Drupal\Core\Datetime\DrupalDateTime;
 use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\Core\Url;
@@ -20,6 +21,7 @@ function calendly_availability_requirements($phase) {
   }
 
   $state = \Drupal::state();
+  $config = \Drupal::config('calendly_availability.settings');
   $token = $state->get('calendly_availability.personal_access_token');
   $expires_at = $state->get('calendly_availability.token_expires_at');
   $last_refresh_error = $state->get('calendly_availability.last_refresh_error_time');
@@ -27,6 +29,31 @@ function calendly_availability_requirements($phase) {
   $last_api_error = $state->get('calendly_availability.last_api_error_time');
   $cooldown_until = (int) $state->get('calendly_availability.refresh_cooldown_until', 0);
   $settings_url = Url::fromRoute('calendly_availability.settings')->toString();
+
+  // PAT-anchored short-circuit: when a Personal Access Token is configured
+  // for the authorized environment, the OAuth state is irrelevant. Report
+  // OK and skip expiry/refresh-failure warnings — those failure modes
+  // don't apply to PAT auth.
+  $pat = CalendlySettingsForm::getPatForRefreshEnvironment($config);
+  if ($pat !== NULL) {
+    $requirements['calendly_availability_token'] = [
+      'title' => t('Calendly Integration'),
+      'value' => t('Authenticated via Personal Access Token'),
+      'description' => t('A PAT is configured for the authorized environment, so the module does not rely on OAuth refresh.'),
+      'severity' => REQUIREMENT_OK,
+    ];
+    if ($last_api_error && (time() - $last_api_error) < 86400) {
+      $requirements['calendly_availability_recent_api_error'] = [
+        'title' => t('Calendly API'),
+        'value' => t('Recent API failure'),
+        'description' => t('A Calendly API call failed within the last 24 hours. Users are seeing the fallback link. Review the <a href=":logs">recent log messages</a>.', [
+          ':logs' => Url::fromRoute('dblog.overview', [], ['query' => ['type[]' => 'calendly_availability']])->toString(),
+        ]),
+        'severity' => REQUIREMENT_WARNING,
+      ];
+    }
+    return $requirements;
+  }
 
   if (empty($token)) {
     $requirements['calendly_availability_token'] = [
@@ -112,6 +139,25 @@ function calendly_availability_requirements($phase) {
  */
 function calendly_availability_cron() {
   \Drupal::service('calendly_availability.token_manager')->refreshIfNeeded();
+
+  // Daily heartbeat while OAuth refresh remains broken — covers the case
+  // where the first failure alert fell inside the 6h suppression window
+  // and the integration has been silently down for hours. Skip when a
+  // PAT is in use; there's no refresh path to fail.
+  $config = \Drupal::config('calendly_availability.settings');
+  if (CalendlySettingsForm::getPatForRefreshEnvironment($config) !== NULL) {
+    return;
+  }
+  $state = \Drupal::state();
+  $consecutive = (int) $state->get('calendly_availability.consecutive_refresh_failures', 0);
+  if ($consecutive > 0) {
+    \Drupal::service('calendly_availability.alerts')->notifyPersistentFailure(
+      (string) $state->get('calendly_availability.last_refresh_error_message', 'unknown'),
+      'See dblog for the most recent attempt.',
+      $consecutive,
+      (int) $state->get('calendly_availability.token_expires_at', 0)
+    );
+  }
 }
 
 /**

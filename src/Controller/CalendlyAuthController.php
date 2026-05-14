@@ -115,18 +115,23 @@ class CalendlyAuthController extends ControllerBase {
    * Provides diagnostic information for Calendly API connectivity.
    */
   public function diagnostics() {
-    $personal_access_token = trim((string) \Drupal::state()->get('calendly_availability.personal_access_token', ''));
+    // Use the token manager so this exercises the same code path real API
+    // calls take — including the PAT short-circuit when one is configured.
+    $token = \Drupal::service('calendly_availability.token_manager')->getValidAccessToken();
+    $pat = CalendlySettingsForm::getPatForCurrentHost($this->configFactory->get('calendly_availability.settings'));
     $messages = [];
 
-    if (empty($personal_access_token)) {
-      $messages[] = $this->t('Personal Access Token is missing. Please authorize the module on the settings page.');
+    if (empty($token)) {
+      $messages[] = $this->t('No usable Calendly access token. Configure a Personal Access Token or click Authorize on the settings page.');
     }
     else {
-      $messages[] = $this->t('Personal Access Token is configured.');
+      $messages[] = $pat !== NULL
+        ? $this->t('Authenticated via Personal Access Token (this environment).')
+        : $this->t('Authenticated via OAuth access token.');
       try {
         $response = $this->httpClient->get('https://api.calendly.com/users/me', [
           'headers' => [
-            'Authorization' => 'Bearer ' . $personal_access_token,
+            'Authorization' => 'Bearer ' . $token,
             'Accept' => 'application/json',
           ],
         ]);

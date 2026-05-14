@@ -15,6 +15,7 @@ The module is designed to be flexible and configurable, allowing site administra
     * Customize the button text for scheduling.
     * Configure a fallback URL for users if no slots are available.
 * **OAuth Support**: Securely connects to the Calendly API using OAuth 2.0 for fetching availability.
+* **Personal Access Token alternative**: A per-environment PAT field lets you bypass OAuth entirely. Recommended for long-lived environments; eliminates the refresh-token rotation failure mode.
 * **Multi-environment configuration**: Supports different credentials for production, testing, and development environments.
 * **Stats dashboard + API**: Surfaces completed tours/orientations per staff member, popular times, and availability leaders both in the UI and via JSON for snapshot ingestion.
 
@@ -28,12 +29,30 @@ The module is designed to be flexible and configurable, allowing site administra
 
 ### 1. API Credentials
 
-Before using the module, you need to configure your Calendly API credentials.
+Before using the module, you need to configure your Calendly API credentials. Two authentication paths are supported — pick the one that fits each environment.
+
+#### Option A: Personal Access Token (recommended for production)
+
+PATs don't expire and don't rotate, so they can't be killed by a refresh-token race or by 120-day inactivity revoke. This is the default recommendation for any environment that needs to stay online unattended.
+
+1. Sign in to Calendly as the long-lived staff/admin account whose events drive the booking widgets.
+2. Generate a token at **Integrations → API & Webhooks → Personal Access Tokens**.
+3. Navigate to **Configuration > Services > Calendly API Settings** (`/admin/config/services/calendly_availability`).
+4. Paste the token into the **Personal Access Token (PAT)** field inside the appropriate environment fieldset (Production / Testing / Development). Save.
+5. The status panel will switch to "Authenticated via Personal Access Token. OAuth refresh is skipped — no re-authorization required."
+
+When a PAT is set for an environment, OAuth refresh, expiry warnings, and the refresh-failure alert path are all bypassed for that environment. Clearing the field reverts to OAuth on the next request.
+
+> **Tip for local dev:** if you periodically `lando pull-db` from production, set a separate PAT in the Development fieldset. Without one, local cron uses production's tokens — which silently invalidates production's refresh token when Calendly rotates it.
+
+#### Option B: OAuth 2.0 (fallback)
 
 1.  Navigate to **Configuration > Services > Calendly API Settings** (`/admin/config/services/calendly_availability`).
 2.  Enter the **Base URL**, **Client ID**, and **Client Secret** for each of your environments (Production, Testing, Development). The module will automatically use the settings that match your current website's URL.
 3.  Save the configuration.
 4.  Click the "Authorize with Calendly for this Environment" button to initiate the OAuth connection. You will be redirected to Calendly to approve the authorization.
+
+OAuth tokens rotate on every refresh. Concurrent refreshes (or stale tokens replayed from a pulled-down database) trigger an `invalid_grant` cascade that can only be resolved by clicking "Authorize" again. Use OAuth only where PAT isn't an option.
 
 ### 2. Block Placement
 
@@ -74,7 +93,16 @@ The module also includes a basic CSS file (`css/calendly_availability.css`) that
 
 ## Diagnostics
 
-The module provides a diagnostics page to help you troubleshoot API connectivity issues. You can access it at **Configuration > Services > Calendly API Settings > Diagnostics** (`/admin/config/services/calendly_availability/diagnostics`). This page will show you the status of your API token and whether the module can successfully connect to the Calendly API.
+The module provides a diagnostics page to help you troubleshoot API connectivity issues. Visit `/admin/config/services/calendly-availability/diagnostics` to see whether the current environment is authenticated via PAT or OAuth and whether the module can successfully call the Calendly API.
+
+## Failure alerts
+
+When OAuth refresh fails, the module sends alerts to the configured email and (if `slack_connector` is set up) the configured Slack channel. The default email is `staff@makehaven.org`; override it on the settings form. Two alert paths run:
+
+* **Per-failure alert**: rate-limited to one message every 6 hours per failure type. Suppresses transient blips while a still-valid access token keeps widgets online.
+* **Daily heartbeat**: while `consecutive_refresh_failures > 0`, a separate "still broken" alert fires at most once every 24 hours, ignoring the 6h suppression. This catches multi-hour outages that began inside the suppression window.
+
+Both alert paths are skipped automatically when a PAT is in use, since there is no refresh path to fail.
 
 ## Calendly Utilization Stats
 
