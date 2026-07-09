@@ -9,6 +9,7 @@ use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
 use Drupal\Core\Url;
 use Drupal\Core\Utility\Error; // For logging exceptions
+use Drupal\calendly_availability\Service\CalendlySlotRepository;
 use Drupal\calendly_availability\Service\CalendlyTokenTrait;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\RequestException;
@@ -31,6 +32,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
   protected $logger;
   protected $dateFormatter;
   protected ConfigFactoryInterface $configFactory;
+  protected CalendlySlotRepository $slotRepository;
 
   public function __construct(
     array $configuration,
@@ -39,13 +41,15 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
     ClientInterface $http_client,
     LoggerInterface $logger,
     DateFormatterInterface $date_formatter,
-    ConfigFactoryInterface $config_factory
+    ConfigFactoryInterface $config_factory,
+    CalendlySlotRepository $slot_repository
   ) {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
     $this->httpClient = $http_client;
     $this->logger = $logger;
     $this->dateFormatter = $date_formatter;
     $this->configFactory = $config_factory;
+    $this->slotRepository = $slot_repository;
   }
 
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
@@ -56,7 +60,8 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       $container->get('http_client'),
       $container->get('logger.factory')->get('calendly_availability'),
       $container->get('date.formatter'),
-      $container->get('config.factory')
+      $container->get('config.factory'),
+      $container->get('calendly_availability.slot_repository')
     );
   }
 
@@ -75,31 +80,6 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       'hide_empty_day_rows' => FALSE,
       'no_results_message' => $this->t('No slots currently available. Please check back later.'),
     ] + parent::defaultConfiguration();
-  }
-
-  protected function _determine_owner_display_name(array $et, array &$user_names_cache, array $headers, string $current_user_uri = NULL, string $current_user_name = '') {
-    $owner_display_name = 'Unknown Owner';
-    $event_name_val = $et['name'] ?? 'N/A';
-    if (isset($et['profile']['type'], $et['profile']['name'], $et['profile']['owner'])) {
-        $profile_type = $et['profile']['type'];
-        $profile_name_from_obj = $et['profile']['name'];
-        $profile_owner_uri = $et['profile']['owner'];
-        if ($profile_type === 'Team') {
-            $owner_display_name = $profile_name_from_obj . ' (Team)';
-        } elseif ($profile_type === 'User') {
-            $owner_display_name = $profile_name_from_obj;
-            if ($profile_owner_uri) { $user_names_cache[$profile_owner_uri] = $owner_display_name; }
-        } else { $this->logger->warning('Event "@event" has a profile object, but with an unknown type: "@type". Profile data: @profile', ['@event' => $event_name_val, '@type' => $profile_type, '@profile' => json_encode($et['profile'])]); }
-    } elseif (isset($et['user'])) {
-        $event_owner_user_uri = $et['user'];
-        if (isset($user_names_cache[$event_owner_user_uri])) { $owner_display_name = $user_names_cache[$event_owner_user_uri]; }
-        else { if ($event_owner_user_uri === $current_user_uri && !empty($current_user_name)) { $owner_display_name = $current_user_name; $user_names_cache[$event_owner_user_uri] = $owner_display_name; }
-            else { try { $user_details_response = $this->httpClient->get($event_owner_user_uri, ['headers' => $headers]); $user_details_data = json_decode($user_details_response->getBody()->getContents(), TRUE);
-                    if (isset($user_details_data['resource']['name'])) { $owner_display_name = $user_details_data['resource']['name']; $user_names_cache[$event_owner_user_uri] = $owner_display_name; }
-                    else { $owner_display_name = 'User (Name N/A)'; } }
-                catch (RequestException $user_fetch_ex) { $this->logger->warning('Failed to fetch user details for URI @uri (via direct "user" field). Message: @message', ['@uri' => $event_owner_user_uri, '@message' => $user_fetch_ex->getMessage()]); $owner_display_name = 'User (Fetch Failed)'; }}}}
-    else { $this->logger->warning('Could not determine owner for event type "@name" using profile or direct user field. Defaulting to "Unknown Owner". Event Data: @event_data', ['@name' => $event_name_val, '@event_data' => json_encode($et)]);}
-    return $owner_display_name;
   }
 
   protected function _get_available_event_types_for_form() {
@@ -131,7 +111,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
         foreach ($event_types_data['collection'] as $et) {
             if (isset($et['uri'], $et['name'])) {
                 $event_uri_val = $et['uri']; $event_name_val = $et['name'];
-                $owner_display_name = $this->_determine_owner_display_name($et, $user_names_cache, $headers, $current_user_uri, $current_user_name);
+                $owner_display_name = $this->slotRepository->determineOwnerDisplayName($et, $user_names_cache, ['headers' => $headers], $current_user_uri, $current_user_name);
                 $status_label = ($et['active'] ?? FALSE) ? 'Active' : 'Inactive';
                 $event_options[$event_uri_val] = $event_name_val . ' (' . $owner_display_name . ' - ' . $status_label . ')';
             } else { $this->logger->debug('Skipping an event type from form collection due to missing URI or name field: @event_data', ['@event_data' => json_encode($et)]); }
@@ -436,17 +416,15 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
     }
 
     try {
-      $this->logger->debug('--- Starting Calendly Availability Fetch for block display ---');
-      $selected_uris = $config['selected_event_type_uris'] ?? [];
-      $keywords_string = $config['event_type_keywords'] ?? '';
-      $keywords = !empty($keywords_string) ? array_map('trim', explode(',', strtolower($keywords_string))) : [];
-      $days_to_show = (int) ($config['days_to_show'] ?? 7);
-
-      if (!empty($selected_uris)) { $this->logger->debug('Filtering by explicitly selected URIs: @uris', ['@uris' => json_encode($selected_uris)]); }
-      else { $this->logger->debug('Using keyword filter: "@keywords"', ['@keywords' => $keywords_string]); }
-      $this->logger->debug('Days to show: @days', ['@days' => $days_to_show]);
-
-      $available_slots_raw = $this->getConsolidatedAvailability($token, $selected_uris, $keywords, $days_to_show);
+      // Slot data comes from the repository's cache, kept warm by cron.
+      // Worst case (cold or expired cache) the repository refreshes inline
+      // with concurrent API calls; on failure it serves the last known
+      // good data, however old.
+      $payload = $this->slotRepository->getSlots($config);
+      if ($payload === NULL) {
+        return $this->renderFallbackOrAdminError($config, 'Calendly availability could not be loaded.');
+      }
+      $available_slots_raw = $payload['slots'];
 
       $fallback_url = $config['fallback_url'];
       if (empty($available_slots_raw) && !empty($fallback_url)) {
@@ -569,120 +547,4 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
     ];
   }
 
-  /**
-   * Fetches and consolidates availability slots from the Calendly API.
-   * This version loops to get more than 7 days.
-   */
-  protected function getConsolidatedAvailability($token, array $selected_uris, array $keywords, $days_to_show) {
-    $all_available_slots = [];
-    $headers = ['Authorization' => "Bearer $token",'Content-Type' => 'application/json',];
-    $this->logger->debug('Using token for API calls: @token_fragment...', ['@token_fragment' => substr($token, 0, 10)]);
-    $user_uri = NULL; $current_user_data_for_runtime = NULL;
-    $this->logger->debug('Step 1: Fetching current user URI from /users/me...');
-    try {
-      $response = $this->httpClient->get('https://api.calendly.com/users/me', ['headers' => $headers]);
-      $user_data_raw = $response->getBody()->getContents();
-      $current_user_data_for_runtime = json_decode($user_data_raw, TRUE);
-      if (isset($current_user_data_for_runtime['resource']['uri'])) {
-        $user_uri = $current_user_data_for_runtime['resource']['uri'];
-        $this->logger->debug('Fetched user URI: @uri.', ['@uri' => $user_uri]);
-      } else { $this->logger->warning('Could not determine user URI from /users/me.'); return []; }
-    } catch (RequestException $e) { $this->logger->error('Guzzle error fetching user URI: @msg', ['@msg' => $e->getMessage()]); return [];}
-    
-    $current_user_name = $current_user_data_for_runtime['resource']['name'] ?? 'Current User';
-    $runtime_user_names_cache = $user_uri ? [$user_uri => $current_user_name] : [];
-
-    $raw_event_type_list_for_processing = [];
-    if (!empty($selected_uris)) {
-        $this->logger->debug('Runtime: Fetching details for @count explicitly selected event URIs.', ['@count' => count($selected_uris)]);
-        foreach($selected_uris as $uri) { try { $resp = $this->httpClient->get($uri, ['headers' => $headers]); $data = json_decode($resp->getBody()->getContents(), TRUE); if(isset($data['resource'])) $raw_event_type_list_for_processing[] = $data['resource']; } catch (\Exception $_e){ $this->logger->error('Failed to fetch selected URI @uri: @msg', ['@uri' => $uri, '@msg' => $_e->getMessage()]);}}
-    } else {
-        $organization_uri_for_runtime = $current_user_data_for_runtime['resource']['current_organization'] ?? null;
-        $fetch_url = '';
-        if ($organization_uri_for_runtime) {
-            $fetch_url = 'https://api.calendly.com/event_types?organization=' . urlencode($organization_uri_for_runtime) . '&active=true&count=100&sort=name:asc';
-            $this->logger->debug('Runtime: No specific selections. Fetching event types for organization: @org_uri', ['@org_uri' => $organization_uri_for_runtime]);
-        } elseif ($user_uri) { 
-            $fetch_url = 'https://api.calendly.com/event_types?user=' . urlencode($user_uri) . '&active=true&count=100&sort=name:asc';
-            $this->logger->debug('Runtime: No specific selections or org URI. Fetching event types for current user: @user_uri', ['@user_uri' => $user_uri]);
-        }
-        if ($fetch_url) { try { $resp = $this->httpClient->get($fetch_url, ['headers' => $headers]); $data = json_decode($resp->getBody()->getContents(), TRUE); if(!empty($data['collection'])) $raw_event_type_list_for_processing = $data['collection']; else {$this->logger->info('Runtime: Fetched event types but collection is empty. URL: @url', ['@url' => $fetch_url]);}} catch (\Exception $_e){$this->logger->error('Failed to fetch event types from @url : @msg', ['@url' => $fetch_url, '@msg' => $_e->getMessage()]); return[];}}
-        else { $this->logger->warning('Runtime: Could not determine URL to fetch event types (no org URI and no user URI).'); return[]; }
-    }
-
-    $relevant_event_types_processed = [];
-    foreach ($raw_event_type_list_for_processing as $et_raw) {
-        $owner_name = $this->_determine_owner_display_name($et_raw, $runtime_user_names_cache, $headers, $user_uri, $current_user_name);
-        $et_with_owner = $et_raw; 
-        $et_with_owner['event_owner_name'] = $owner_name; 
-        if (empty($selected_uris)) { 
-            if (!empty($keywords)) {
-                $event_name_original = $et_raw['name'] ?? '';
-                $event_name_lower = strtolower($event_name_original);
-                $keyword_match = FALSE;
-                foreach ($keywords as $keyword) { if (strpos($event_name_lower, $keyword) !== FALSE) { $keyword_match = TRUE; break; } }
-                if ($keyword_match) $relevant_event_types_processed[] = $et_with_owner;
-            } else { $relevant_event_types_processed[] = $et_with_owner; }
-        } else { $relevant_event_types_processed[] = $et_with_owner; }
-    }
-
-    if (empty($relevant_event_types_processed)) { $this->logger->info('No relevant event types found after owner processing and keyword filtering.'); return []; }
-    $this->logger->debug('Processed @count relevant event types with owner names.', ['@count' => count($relevant_event_types_processed)]);
-
-    $max_days_per_request = 7; 
-
-    foreach ($relevant_event_types_processed as $event_type_obj) {
-        $event_type_uri = $event_type_obj['uri'];
-        $event_type_name = $event_type_obj['name'] ?? 'Unknown Event Name';
-        $event_scheduling_url = $event_type_obj['scheduling_url'] ?? NULL; 
-        $event_owner_name_for_slot = $event_type_obj['event_owner_name']; 
-
-        if (!$event_scheduling_url) { $this->logger->warning('Event type "@name" (URI: @uri) is missing a scheduling_url. Skipping.', ['@name' => $event_type_name, '@uri' => $event_type_uri]); continue; }
-        
-        for ($offset = 0; $offset < $days_to_show; $offset += $max_days_per_request) {
-            // *** THE DEFINITIVE FIX: Recalculate the start time inside the loop ***
-            $loop_start_date = new \DateTimeImmutable('+1 minute', new \DateTimeZone('UTC'));
-            $chunk_start_date = $loop_start_date->modify("+$offset days");
-            $days_in_this_chunk = min($max_days_per_request, $days_to_show - $offset);
-            $chunk_end_date = $chunk_start_date->modify("+$days_in_this_chunk days");
-
-            $start_time_param_slots = $chunk_start_date->format('Y-m-d\TH:i:s\Z');
-            $end_time_param_slots = $chunk_end_date->format('Y-m-d\TH:i:s\Z');
-            
-            $this->logger->debug('Fetching availability for @name from @start to @end', ['@name' => $event_type_name, '@start' => $start_time_param_slots, '@end' => $end_time_param_slots]);
-
-            $query_params = ['event_type' => $event_type_uri, 'start_time' => $start_time_param_slots, 'end_time' => $end_time_param_slots];
-            try {
-                $response = $this->httpClient->get('https://api.calendly.com/event_type_available_times', ['headers' => $headers, 'query' => $query_params]);
-                $availability_data = json_decode($response->getBody()->getContents(), TRUE);
-                if (!empty($availability_data['collection'])) {
-                    foreach ($availability_data['collection'] as $slot_item) {
-                        if (($slot_item['status'] ?? 'not-available') === 'available') {
-                            $all_available_slots[] = [
-                                'event_name' => $event_type_name,
-                                'event_owner_name' => $event_owner_name_for_slot,
-                                'start_time' => $slot_item['start_time'],
-                                'invitees_remaining' => $slot_item['invitees_remaining'],
-                                'booking_url' => $event_scheduling_url,
-                            ];
-                        }
-                    }
-                }
-            } catch (RequestException $e_slots) { $this->logger->error('Failed to fetch availability for ET "@name" in chunk: @msg', ['@name' => $event_type_name, '@msg' => $e_slots->getMessage()]); }
-        }
-    } 
-
-    if (!empty($all_available_slots)) {
-        $unique_slots = [];
-        foreach ($all_available_slots as $slot) {
-            $key = $slot['start_time'] . '_' . $slot['booking_url'];
-            $unique_slots[$key] = $slot;
-        }
-        $all_available_slots = array_values($unique_slots);
-
-        usort($all_available_slots, function($a, $b) { return strtotime($a['start_time']) - strtotime($b['start_time']); });
-    }
-    $this->logger->debug('--- Finished Calendly Availability Fetch --- Returning @count slots.', ['@count' => count($all_available_slots)]);
-    return $all_available_slots;
-  }
 }

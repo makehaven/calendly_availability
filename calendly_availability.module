@@ -140,6 +140,12 @@ function calendly_availability_requirements($phase) {
 function calendly_availability_cron() {
   \Drupal::service('calendly_availability.token_manager')->refreshIfNeeded();
 
+  // Keep availability slot data warm for every placed block so visitors
+  // read from cache instead of waiting on Calendly API calls at render
+  // time. Runs before the PAT short-circuit below — cache warming is
+  // needed regardless of how the API is authenticated.
+  \Drupal::service('calendly_availability.slot_repository')->refreshAllPlacedBlocks();
+
   // Daily heartbeat while OAuth refresh remains broken — covers the case
   // where the first failure alert fell inside the 6h suppression window
   // and the integration has been silently down for hours. Skip when a

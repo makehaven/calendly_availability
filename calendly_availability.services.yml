@@ -22,6 +22,19 @@ services:
       - '@http_client'
       - '@logger.channel.calendly_availability'
 
+  calendly_availability.slot_repository:
+    class: Drupal\calendly_availability\Service\CalendlySlotRepository
+    arguments:
+      - '@http_client'
+      - '@logger.channel.calendly_availability'
+      - '@cache.default'
+      - '@lock'
+      - '@state'
+      - '@datetime.time'
+      - '@entity_type.manager'
+      - '@calendly_availability.token_manager'
+      - '@calendly_availability.alerts'
+
   calendly_availability.token_manager:
     class: Drupal\calendly_availability\Service\CalendlyTokenManager
     arguments:

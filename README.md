@@ -17,7 +17,31 @@ The module is designed to be flexible and configurable, allowing site administra
 * **OAuth Support**: Securely connects to the Calendly API using OAuth 2.0 for fetching availability.
 * **Personal Access Token alternative**: A per-environment PAT field lets you bypass OAuth entirely. Recommended for long-lived environments; eliminates the refresh-token rotation failure mode.
 * **Multi-environment configuration**: Supports different credentials for production, testing, and development environments.
+* **Warm slot cache**: Availability data is fetched from Calendly concurrently, cached server-side, and re-warmed by cron. Page renders read from cache, so visitors never wait on the Calendly API; stale data is served as a fallback when Calendly is slow or down.
 * **Stats dashboard + API**: Surfaces completed tours/orientations per staff member, popular times, and availability leaders both in the UI and via JSON for snapshot ingestion.
+
+## Performance & Caching
+
+The block never calls the Calendly API synchronously per-call during page
+render. Slot data is managed by the `calendly_availability.slot_repository`
+service:
+
+* **Data cache**: Consolidated slots are stored in the `default` cache bin,
+  keyed by the block settings that affect the data (selected event type URIs,
+  keywords, days to show). Entries are stored permanently so stale data
+  survives as a fallback.
+* **Concurrent fetching**: A refresh issues the event-type detail and
+  availability requests as concurrent batches (8 at a time), so a full
+  refresh costs roughly one round trip per batch instead of 20+ sequential
+  calls.
+* **Cron warming**: `hook_cron()` re-warms the cache for every enabled
+  availability block once data is older than 15 minutes. Duplicate block
+  placements across themes share one cache entry.
+* **Inline refresh**: If a page renders with data older than 30 minutes
+  (matching the block's render-cache max-age), the request refreshes inline
+  under a lock; concurrent requests serve the stale data rather than piling
+  onto the API. If the refresh fails, the last known good data is served,
+  however old.
 
 ## Installation
 
