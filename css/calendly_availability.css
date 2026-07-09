@@ -1,13 +1,58 @@
-.table thead tr {
-    background-color: grey;
+/* Scoped to the calendly week table — these rules load on any page with the
+   availability block, so nothing here may target global classes. */
+.calendly-week-table thead tr {
+  background-color: grey;
+}
+
+.calendly-week-table thead th {
+  color: white;
+}
+
+/* Safety net at any width: never let the table clip without a scrollbar. */
+.calendly-availability-week-schedule {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile: stack the week grid into per-day sections. The time-block column
+   headers are redundant here — every slot button carries its own time — so
+   the thead is hidden and each day renders as a header followed by its
+   full-width booking buttons (tour funnel fix, feedback sid 19859). */
+@media (max-width: 767.98px) {
+  .calendly-week-table,
+  .calendly-week-table tbody,
+  .calendly-week-table tr,
+  .calendly-week-table td {
+    display: block;
+    width: 100%;
   }
-  
-  .table thead th {
-    color: white;
+
+  .calendly-week-table thead {
+    display: none;
   }
-  
-  .btn-primary {
-    background-color: #861216;
-    border-color: #861216;
+
+  .calendly-week-table td.calendly-slot-cell.is-empty {
+    display: none;
   }
-  
+
+  .calendly-week-table tr {
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+  }
+
+  .calendly-week-table td {
+    border: 0;
+  }
+
+  .calendly-week-table td.calendly-day-cell {
+    background: var(--mh-color-surface-muted, #f8f9fa);
+    border-bottom: 2px solid var(--mh-color-brand-primary, #8b1919);
+    padding: 0.5rem 0.75rem;
+  }
+
+  .calendly-week-table .calendly-schedule-button {
+    display: block;
+    width: 100%;
+    margin-bottom: 0.25rem;
+  }
+}

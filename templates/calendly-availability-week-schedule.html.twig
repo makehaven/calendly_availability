@@ -16,13 +16,13 @@
           {% set day_info = schedule_data.display_days_info[day_key] %}
           {% set day_slots_data = schedule_data.days_data[day_key] %}
           <tr>
-            <td>
+            <td class="calendly-day-cell">
               <strong>{{ day_info.name }}</strong><br>
               <small>{{ day_info.date_full }}</small>
             </td>
             {% for block_key, block_header_info in schedule_data.time_block_headers %}
-              <td>
-                {% set slots_in_block = day_slots_data[block_key].slots %}
+              {% set slots_in_block = day_slots_data[block_key].slots %}
+              <td class="calendly-slot-cell{{ slots_in_block is empty ? ' is-empty' : '' }}">
                 {% if slots_in_block is not empty %}
                   <ul class="list-unstyled calendly-slot-list-item"> {# Added a class for easier styling of the li items #}
                     {% for slot in slots_in_block %}

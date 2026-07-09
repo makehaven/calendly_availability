@@ -497,7 +497,12 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
         '#button_action_text_config' => $this->t($config['button_action_text']),
         '#fallback_url' => $fallback_url, 
         '#fallback_link_text_config' => $this->t($config['fallback_link_text']),
-        '#attached' => ['library' => ['calendly_availability/calendly_widget']],
+        '#attached' => [
+          'library' => [
+            'calendly_availability/calendly_widget',
+            'calendly_availability/calendly_availability',
+          ],
+        ],
         '#cache' => ['max-age' => $config['display_mode'] === 'week_table' ? 1800 : 3600],
       ];
 
