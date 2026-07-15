@@ -2,12 +2,6 @@ calendly_availability:
   css:
     theme:
       css/calendly_availability.css: {}
-  js:
-    js/calendly_availability.js: {} # Your custom JS if needed
-  dependencies:
-    - core/jquery
-    - core/drupal
-    - core/drupalSettings
 
 calendly_widget:
   js:
