@@ -10,6 +10,18 @@ calendly_widget:
     theme:
       https://assets.calendly.com/assets/external/widget.css: { type: external }
 
+# Schedule-popup enhancements: open to the selected month, prefill the member's
+# details, and hand off to the next step after booking.
+schedule:
+  js:
+    js/calendly_schedule.js: {}
+  dependencies:
+    - core/drupal
+    - core/once
+    - core/drupalSettings
+    - calendly_availability/calendly_widget
+    - calendly_availability/calendly_availability
+
 stats:
   css:
     theme:

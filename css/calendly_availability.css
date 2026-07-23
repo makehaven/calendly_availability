@@ -56,3 +56,64 @@
     margin-bottom: 0.25rem;
   }
 }
+
+/* Post-booking "You're booked" hand-off banner (js/calendly_schedule.js). */
+.mh-calendly-booked {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(20, 18, 16, 0.55);
+}
+.mh-calendly-booked__card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  max-width: 440px;
+  width: 100%;
+  padding: 32px 28px;
+  text-align: center;
+}
+.mh-calendly-booked__check {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: #2e6b3a;
+  color: #fff;
+  font-size: 32px;
+  line-height: 56px;
+}
+.mh-calendly-booked__title {
+  margin: 0 0 6px;
+  font-size: 1.5rem;
+}
+.mh-calendly-booked__msg {
+  margin: 0 0 20px;
+  color: #6f675f;
+}
+.mh-calendly-booked__btn {
+  display: inline-block;
+  background: #8b1919;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+  padding: 0.75rem 1.4rem;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.05rem;
+}
+.mh-calendly-booked__btn:hover,
+.mh-calendly-booked__btn:focus {
+  background: #6f1414;
+  color: #fff;
+}
+.mh-calendly-booked__auto {
+  margin: 14px 0 0;
+  font-size: 0.85rem;
+  color: #8a827a;
+}

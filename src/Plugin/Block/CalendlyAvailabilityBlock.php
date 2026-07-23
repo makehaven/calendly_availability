@@ -79,7 +79,53 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       'hide_empty_time_columns' => FALSE,
       'hide_empty_day_rows' => FALSE,
       'no_results_message' => $this->t('No slots currently available. Please check back later.'),
+      'post_schedule_url' => '',
     ] + parent::defaultConfiguration();
+  }
+
+  /**
+   * Collect the current member's Calendly prefill data (name / email / phone).
+   *
+   * Best-effort: email is reliable; name from field_first_name/last_name; phone
+   * from the member's 'main' profile if present. Missing pieces are simply not
+   * prefilled (Calendly leaves those fields blank). Never throws.
+   */
+  protected function _currentUserPrefill(): array {
+    $prefill = [];
+    try {
+      $account = \Drupal::currentUser();
+      if (!$account->isAuthenticated()) {
+        return $prefill;
+      }
+      $user = \Drupal\user\Entity\User::load($account->id());
+      if (!$user) {
+        return $prefill;
+      }
+      $first = $user->hasField('field_first_name') ? trim((string) $user->get('field_first_name')->value) : '';
+      $last = $user->hasField('field_last_name') ? trim((string) $user->get('field_last_name')->value) : '';
+      $name = trim($first . ' ' . $last);
+      if ($name !== '') {
+        $prefill['name'] = $name;
+      }
+      $email = $account->getEmail();
+      if (!empty($email)) {
+        $prefill['email'] = $email;
+      }
+      if (\Drupal::moduleHandler()->moduleExists('profile')) {
+        $profile = \Drupal::entityTypeManager()->getStorage('profile')->loadByUser($user, 'main');
+        if ($profile && $profile->hasField('field_preferred_phone')) {
+          $phone = trim((string) $profile->get('field_preferred_phone')->value);
+          if ($phone !== '') {
+            $prefill['phone'] = $phone;
+          }
+        }
+      }
+    }
+    catch (\Exception $e) {
+      // Prefill is a convenience; never let it break the block render.
+      $this->logger->debug('Calendly prefill skipped: @m', ['@m' => $e->getMessage()]);
+    }
+    return $prefill;
   }
 
   protected function _get_available_event_types_for_form() {
@@ -255,6 +301,13 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
         '#default_value' => $config['no_results_message'],
         '#description' => $this->t('Message displayed if no slots are found and no fallback URL is used.'),
     ];
+
+    $form['display_settings_fieldset']['post_schedule_url'] = [
+        '#type' => 'textfield',
+        '#title' => $this->t('After-booking destination (path)'),
+        '#default_value' => $config['post_schedule_url'],
+        '#description' => $this->t('Internal path (e.g. <code>/involve</code>) to offer as the next step after a booking completes. When set, the Calendly popup closes on success and a "You\'re booked — continue" banner links here (with a gentle auto-advance). Leave empty to just close the popup.'),
+    ];
     
     $form['display_settings_fieldset']['hide_empty_time_columns'] = [
       '#type' => 'checkbox',
@@ -294,6 +347,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
     $this->configuration['fallback_url'] = $display_settings_values['fallback_url'];
     $this->configuration['fallback_link_text'] = $display_settings_values['fallback_link_text'];
     $this->configuration['no_results_message'] = $display_settings_values['no_results_message'];
+    $this->configuration['post_schedule_url'] = trim($display_settings_values['post_schedule_url'] ?? '');
     $this->configuration['hide_empty_time_columns'] = $display_settings_values['hide_empty_time_columns'];
     $this->configuration['hide_empty_day_rows'] = $display_settings_values['hide_empty_day_rows'];
   }
@@ -471,17 +525,32 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       $this->logger->debug('Successfully processed @count available slots for display.', ['@count' => count($processed_slots)]);
       
       $display_mode = $config['display_mode'];
+      // Prefill the popup with the member's details so they don't retype what
+      // we already collected, plus the after-booking destination. Because this
+      // carries the current user's own name/email/phone, the block is cached
+      // per user (the 'user' cache context below).
+      $prefill = $this->_currentUserPrefill();
       $build_array = [
         '#button_action_text_config' => $this->t($config['button_action_text']),
-        '#fallback_url' => $fallback_url, 
+        '#fallback_url' => $fallback_url,
         '#fallback_link_text_config' => $this->t($config['fallback_link_text']),
         '#attached' => [
           'library' => [
             'calendly_availability/calendly_widget',
             'calendly_availability/calendly_availability',
+            'calendly_availability/schedule',
+          ],
+          'drupalSettings' => [
+            'calendlyAvailability' => [
+              'prefill' => $prefill,
+              'postScheduleUrl' => $config['post_schedule_url'] ?? '',
+            ],
           ],
         ],
-        '#cache' => ['max-age' => $config['display_mode'] === 'week_table' ? 1800 : 3600],
+        '#cache' => [
+          'max-age' => $config['display_mode'] === 'week_table' ? 1800 : 3600,
+          'contexts' => ['user'],
+        ],
       ];
 
       if ($display_mode === 'week_table') {
