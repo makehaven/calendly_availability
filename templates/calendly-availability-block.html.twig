@@ -39,9 +39,13 @@
             {% endif %}
           </div>
           <div class="slot-book">
-            <a href="{{ slot.booking_url }}" 
+            {# calendly_schedule.js owns the click: it opens the popup with the
+               member's details prefilled and the campaign (utm_*) forwarded.
+               No inline onclick — it fired first with the bare booking URL and
+               opened an unattributed popup. Without JS the href still works. #}
+            <a href="{{ slot.booking_url }}"
                class="btn btn-primary calendly-schedule-button"
-               onclick="Calendly.initPopupWidget({url: '{{ slot.booking_url | e('html_attr') }}'}); return false;">
+               data-booking-url="{{ slot.booking_url }}">
               {{ button_action_text_config|default('Schedule'|t) }} {{ slot.time_formatted_for_button }} {# Dynamic button text #}
             </a>
           </div>

@@ -19,6 +19,35 @@ The module is designed to be flexible and configurable, allowing site administra
 * **Multi-environment configuration**: Supports different credentials for production, testing, and development environments.
 * **Warm slot cache**: Availability data is fetched from Calendly concurrently, cached server-side, and re-warmed by cron. Page renders read from cache, so visitors never wait on the Calendly API; stale data is served as a fallback when Calendly is slow or down.
 * **Stats dashboard + API**: Surfaces completed tours/orientations per staff member, popular times, and availability leaders both in the UI and via JSON for snapshot ingestion.
+* **Campaign attribution**: Forwards `utm_*` params from the page URL onto the Calendly booking URL, so Calendly records which campaign produced each booking.
+
+## Campaign attribution
+
+`calendly_schedule.js` copies `utm_source`, `utm_medium`, `utm_campaign`,
+`utm_content` and `utm_term` from the current page URL onto the booking URL
+before opening the Calendly popup (and onto the link's `href`, so middle-click
+and "open in new tab" carry it too). Calendly stores them on the invitee's
+`tracking` object, and `calendly_to_civicrm` writes them onto the CiviCRM
+activity.
+
+Without this the chain broke one click from the end: a landing page tags its
+`/tour` link with the campaign, the redirect to the booking page preserves the
+query string, and then the booking URL — built from Calendly's bare
+`scheduling_url` — dropped it. Every tour booked from a flyer looked exactly
+like a tour booked from nowhere.
+
+Two details worth knowing before changing this:
+
+* Tags already present on the booking URL are never overwritten, so an event
+  type configured with its own `utm_source` inside Calendly stays authoritative.
+* The params are also cached in `sessionStorage`, so a visitor who arrives from
+  a campaign and browses a page or two before booking is still attributed. It is
+  session storage, not local, so the tag does not haunt later visits.
+
+The booking buttons carry **no inline `onclick`**. There used to be one, and it
+fired *before* the behavior's listener with the bare booking URL — losing the
+selected month, the prefill, and the campaign. JS owns the click; the plain
+`href` remains the no-JS fallback.
 
 ## Performance & Caching
 

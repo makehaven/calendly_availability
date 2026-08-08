@@ -30,15 +30,16 @@
                         {# Optional: Display event name if desired, image shows it #}
                         <div class="calendly-slot-event-name"><small>{{ slot.event_name }}</small></div>
                         
-                        {# JS (calendly_schedule.js) opens the popup to this slot's
-                           month with the member's details prefilled; the inline
-                           onclick is a no-JS fallback that still opens the widget. #}
+                        {# calendly_schedule.js opens the popup to this slot's
+                           month, prefilled, with the campaign (utm_*) forwarded.
+                           No inline onclick — it fired first with the bare
+                           booking URL, losing both the month and the campaign.
+                           Without JS the href still reaches Calendly. #}
                         <a href="{{ slot.booking_url }}"
                            class="btn btn-primary btn-sm calendly-schedule-button"
                            data-booking-url="{{ slot.booking_url }}"
                            data-slot-month="{{ day_key|slice(0, 7) }}"
-                           data-slot-date="{{ day_key }}"
-                           onclick="Calendly.initPopupWidget({url: '{{ slot.booking_url | e('html_attr') }}'}); return false;">
+                           data-slot-date="{{ day_key }}">
                            {{ 'Schedule'|t }} {{ slot.time_formatted_for_button }} {# Dynamic button text #}
                         </a>
                         <div class="calendly-slot-details">

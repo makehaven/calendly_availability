@@ -8,6 +8,8 @@
  *   3. After booking, close the Calendly popup and show a clear "You're booked —
  *      continue to your next step" banner (with a gentle auto-advance), so
  *      members don't get stranded on the confirmation.
+ *   4. Forward campaign attribution (utm_*) from the page URL onto the booking
+ *      URL, so Calendly records which campaign produced each tour.
  *
  * Data + settings come from the block: each button carries data-booking-url and
  * data-slot-month/date; prefill and the post-schedule URL come from
@@ -15,6 +17,54 @@
  */
 (function (Drupal, drupalSettings, once) {
   'use strict';
+
+  /**
+   * Campaign parameters Calendly stores on the invitee's `tracking` object.
+   *
+   * Without these the whole attribution chain dies one click from the end:
+   * makerspace_landing_page tags its /tour link with the campaign, the redirect
+   * to /open-tours preserves the query string, and then the booking URL — built
+   * from Calendly's bare scheduling_url — dropped it, so every tour booked from
+   * a flyer looked identical to a tour booked from nowhere.
+   */
+  var UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+
+  // Survives the visit, not the browser: a member who lands from a campaign and
+  // browses a page or two before booking still gets attributed, but the tag
+  // does not haunt every future visit from that machine.
+  var STORAGE_KEY = 'mhCalendlyCampaign';
+
+  /**
+   * Returns campaign params for this visit, preferring the current URL.
+   *
+   * Storage is only a fallback for later pageviews in the same session, so a
+   * fresh campaign click always wins over a stale stored one.
+   */
+  function campaignParams() {
+    var found = {};
+    var hasFresh = false;
+    try {
+      var query = new URLSearchParams(window.location.search);
+      UTM_KEYS.forEach(function (key) {
+        var value = query.get(key);
+        if (value) {
+          found[key] = value;
+          hasFresh = true;
+        }
+      });
+      if (hasFresh) {
+        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(found));
+        return found;
+      }
+      var stored = window.sessionStorage.getItem(STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    }
+    catch (e) {
+      // Private mode, disabled storage, or an ancient browser. Attribution is
+      // a nice-to-have; never let it break the booking button.
+      return hasFresh ? found : {};
+    }
+  }
 
   function buildUrl(base, month, date) {
     if (!base) {
@@ -28,7 +78,17 @@
     }
     if (date) {
       url += sep + 'date=' + encodeURIComponent(date);
+      sep = '&';
     }
+    var campaign = campaignParams();
+    UTM_KEYS.forEach(function (key) {
+      // Never override a tag the booking URL already carries — an event type
+      // configured with its own utm_source in Calendly stays authoritative.
+      if (campaign[key] && url.indexOf(key + '=') === -1) {
+        url += sep + key + '=' + encodeURIComponent(campaign[key]);
+        sep = '&';
+      }
+    });
     return url;
   }
 
@@ -101,16 +161,27 @@
     attach: function (context) {
       // Open the popup to the right month, with prefill.
       once('mh-calendly-btn', '.calendly-schedule-button', context).forEach(function (btn) {
+        // Remember the untouched booking URL before rewriting href below, so
+        // repeat attaches never stack month/date/utm onto an already-built URL.
+        if (!btn.getAttribute('data-booking-url')) {
+          btn.setAttribute('data-booking-url', btn.getAttribute('href'));
+        }
+        var base = btn.getAttribute('data-booking-url');
+        var full = buildUrl(base, btn.getAttribute('data-slot-month'), btn.getAttribute('data-slot-date'));
+        // Stamp the href too: middle-click, "open in new tab", and the no-popup
+        // fallback below all navigate rather than going through the widget, and
+        // each of those should still carry the campaign.
+        btn.setAttribute('href', full);
+
         btn.addEventListener('click', function (e) {
           e.preventDefault();
           if (typeof Calendly === 'undefined' || !Calendly.initPopupWidget) {
             // Widget not loaded yet — fall back to navigating to the link.
-            window.location.href = btn.getAttribute('href');
+            window.location.href = full;
             return;
           }
-          var base = btn.getAttribute('data-booking-url') || btn.getAttribute('href');
           Calendly.initPopupWidget({
-            url: buildUrl(base, btn.getAttribute('data-slot-month'), btn.getAttribute('data-slot-date')),
+            url: full,
             prefill: prefillObject()
           });
         });
