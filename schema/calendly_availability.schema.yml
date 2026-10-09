@@ -117,3 +117,9 @@ block.settings.calendly_availability_block:
     no_results_message:
       type: text
       label: 'Custom "No Results" Message'
+    post_schedule_url:
+      type: string
+      label: 'After-booking destination (path)'
+    intro_text:
+      type: text_format
+      label: 'Intro text'

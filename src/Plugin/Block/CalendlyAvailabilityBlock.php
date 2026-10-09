@@ -80,6 +80,7 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       'hide_empty_day_rows' => FALSE,
       'no_results_message' => $this->t('No slots currently available. Please check back later.'),
       'post_schedule_url' => '',
+      'intro_text' => ['value' => '', 'format' => NULL],
     ] + parent::defaultConfiguration();
   }
 
@@ -230,6 +231,16 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
       '#default_value' => $config['stats_category'] ?? '',
     ];
 
+    $intro = $config['intro_text'] ?? [];
+    $form['intro_text'] = [
+      '#type' => 'text_format',
+      '#title' => $this->t('Intro text'),
+      '#description' => $this->t('Shown above the available times, so visitors know what to expect before they pick a slot. Leave empty for none.'),
+      '#default_value' => $intro['value'] ?? '',
+      '#format' => $intro['format'] ?? NULL,
+      '#weight' => -15,
+    ];
+
     $form['event_type_keywords'] = [
       '#type' => 'textfield',
       '#title' => $this->t('Event Type Keywords (Fallback)'),
@@ -338,6 +349,10 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
     $this->configuration['stats_category'] = $values['selected_event_type_uris_fieldset']['stats_category'] ?? '';
 
     $this->configuration['event_type_keywords'] = $values['event_type_keywords'];
+    $this->configuration['intro_text'] = [
+      'value' => trim($values['intro_text']['value'] ?? ''),
+      'format' => $values['intro_text']['format'] ?? NULL,
+    ];
     
     $display_settings_values = $values['display_settings_fieldset'];
     $this->configuration['display_mode'] = $display_settings_values['display_mode'];
@@ -463,6 +478,31 @@ class CalendlyAvailabilityBlock extends BlockBase implements ContainerFactoryPlu
   }
 
   public function build() {
+    $content = $this->buildAvailability();
+    $intro = $this->getConfiguration()['intro_text'] ?? [];
+    if (trim($intro['value'] ?? '') === '') {
+      return $content;
+    }
+    // The intro sits above whatever the availability render returns (table,
+    // list, fallback link or admin error); the inner #cache still bubbles.
+    return [
+      'intro' => [
+        '#type' => 'container',
+        '#attributes' => ['class' => ['calendly-availability__intro']],
+        'text' => [
+          '#type' => 'processed_text',
+          '#text' => $intro['value'],
+          '#format' => $intro['format'] ?? NULL,
+        ],
+      ],
+      'availability' => $content,
+    ];
+  }
+
+  /**
+   * Builds the availability render (table, list or fallback).
+   */
+  protected function buildAvailability() {
     $config = $this->getConfiguration();
     $token = $this->getValidAccessToken();
     if (empty($token)) {
